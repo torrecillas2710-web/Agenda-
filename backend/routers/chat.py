@@ -64,9 +64,19 @@ async def send_message(request: ChatRequest, db: AsyncSession = Depends(get_db))
             db=db,
         )
     except Exception as e:
+        err_str = str(e)
+        if "credit balance is too low" in err_str or "billing" in err_str.lower():
+            raise HTTPException(
+                status_code=402,
+                detail="Sin créditos en Anthropic. Ve a console.anthropic.com → Billing y agrega créditos (mínimo $5 USD)."
+            )
+        if "authentication" in err_str.lower() or "api_key" in err_str.lower():
+            raise HTTPException(
+                status_code=401,
+                detail="API Key de Anthropic inválida. Verifica la variable ANTHROPIC_API_KEY en Railway."
+            )
         import traceback
-        detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()[-500:]}"
-        raise HTTPException(status_code=500, detail=detail)
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
     assistant_msg = ChatMessage(
         user_id=request.user_id,
