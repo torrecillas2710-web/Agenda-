@@ -119,7 +119,7 @@ async def get_jarvis_response(
     db: AsyncSession,
 ) -> dict:
     now = datetime.now().strftime("%A, %d de %B de %Y a las %H:%M")
-    system = JARVIS_SYSTEM_PROMPT.format(current_datetime=now)
+    system = JARVIS_SYSTEM_PROMPT.replace("{current_datetime}", now)
 
     memory_ctx = _build_memory_context(memories)
     tasks_ctx = _build_tasks_context(tasks)
