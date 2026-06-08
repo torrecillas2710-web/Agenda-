@@ -58,6 +58,18 @@ export const taskAPI = {
   },
 }
 
+export const voiceAPI = {
+  transcribe: async (audioBlob: Blob, mimeType: string): Promise<string> => {
+    const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm'
+    const formData = new FormData()
+    formData.append('audio', audioBlob, `recording.${ext}`)
+    const res = await api.post('/api/voice/transcribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return res.data.text
+  },
+}
+
 export const profileAPI = {
   get: async (userId = 1): Promise<UserProfile> => {
     const res = await api.get(`/api/profile/${userId}`)

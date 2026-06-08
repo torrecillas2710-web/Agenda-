@@ -12,7 +12,7 @@ load_dotenv()
 
 from database.database import init_db, AsyncSessionLocal
 from database.models import UserProfile
-from routers import chat, memory, tasks, profile
+from routers import chat, memory, tasks, profile, voice
 
 
 @asynccontextmanager
@@ -62,6 +62,7 @@ app.include_router(chat.router)
 app.include_router(memory.router)
 app.include_router(tasks.router)
 app.include_router(profile.router)
+app.include_router(voice.router)
 
 
 @app.get("/")

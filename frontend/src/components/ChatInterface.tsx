@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, KeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { useJarvisStore } from '../store/jarvisStore'
-import { useVoice, useSpeech } from '../hooks/useVoice'
+import { useSpeech } from '../hooks/useVoice'
+import { useMediaRecorder } from '../hooks/useMediaRecorder'
 import { format } from 'date-fns'
 
 export default function ChatInterface() {
@@ -13,7 +14,7 @@ export default function ChatInterface() {
 
   const { isSpeaking, speak, stop: stopSpeaking } = useSpeech()
 
-  const { isSupported, isIOS, isListening, voiceError, startListening, stopListening } = useVoice({
+  const { isSupported, isRecording, isTranscribing, error: voiceError, startRecording, stopRecording } = useMediaRecorder({
     onResult: (transcript) => {
       setInput(transcript)
       setTimeout(() => handleSend(transcript), 300)
@@ -120,21 +121,14 @@ export default function ChatInterface() {
 
       <div className="chat-input-area">
         <div className="chat-input-row">
-          {isIOS ? (
+          {isSupported && (
             <button
-              className="voice-btn"
-              onClick={() => alert('En iPhone: toca el campo de texto, luego usa el 🎙 micrófono del teclado de iOS para hablar.')}
-              title="Usar micrófono del teclado iOS"
+              className={`voice-btn${isRecording ? ' listening' : ''}`}
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={isTranscribing || isProcessing}
+              title={isRecording ? 'Soltar para enviar' : 'Mantén para hablar'}
             >
-              🎙
-            </button>
-          ) : isSupported && (
-            <button
-              className={`voice-btn${isListening ? ' listening' : ''}`}
-              onClick={isListening ? stopListening : startListening}
-              title={isListening ? 'Detener escucha' : 'Activar reconocimiento de voz'}
-            >
-              {isListening ? '⏹' : '🎙'}
+              {isTranscribing ? '⏳' : isRecording ? '⏹' : '🎙'}
             </button>
           )}
 
@@ -146,7 +140,7 @@ export default function ChatInterface() {
             onKeyDown={handleKeyDown}
             placeholder={isListening ? 'Escuchando...' : 'Enviar instrucción a JARVIS...'}
             rows={1}
-            disabled={isProcessing || isListening}
+            disabled={isProcessing || isRecording}
           />
 
           {isSpeaking ? (
@@ -165,14 +159,19 @@ export default function ChatInterface() {
           )}
         </div>
 
-        {isListening && (
+        {isRecording && (
           <div style={{ marginTop: 6, fontSize: 10, color: 'var(--danger)', fontFamily: 'var(--font-hud)', letterSpacing: 2, textAlign: 'center' }}>
-            ● ESCUCHANDO — HABLA AHORA
+            ● GRABANDO — TOCA ⏹ CUANDO TERMINES
+          </div>
+        )}
+        {isTranscribing && (
+          <div style={{ marginTop: 6, fontSize: 10, color: 'var(--primary)', fontFamily: 'var(--font-hud)', letterSpacing: 2, textAlign: 'center' }}>
+            ◌ TRANSCRIBIENDO...
           </div>
         )}
         {voiceError && (
           <div style={{ marginTop: 6, fontSize: 10, color: 'var(--danger)', fontFamily: 'var(--font-hud)', letterSpacing: 1, textAlign: 'center' }}>
-            ⚠ VOZ: {voiceError}
+            ⚠ {voiceError}
           </div>
         )}
       </div>
