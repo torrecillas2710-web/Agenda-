@@ -7,6 +7,8 @@ export function useMediaRecorder({ onResult }: { onResult?: (text: string) => vo
   const [error, setError] = useState<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const isSupported =
     typeof MediaRecorder !== 'undefined' &&
@@ -19,6 +21,20 @@ export function useMediaRecorder({ onResult }: { onResult?: (text: string) => vo
     return ''
   }
 
+  const stopRecording = useCallback(() => {
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current)
+      vadIntervalRef.current = null
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close()
+      audioCtxRef.current = null
+    }
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+  }, [])
+
   const startRecording = useCallback(async () => {
     setError(null)
     try {
@@ -26,6 +42,34 @@ export function useMediaRecorder({ onResult }: { onResult?: (text: string) => vo
       const mimeType = getMimeType()
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
       chunksRef.current = []
+
+      // Voice activity detection via Web Audio API
+      const ctx = new AudioContext()
+      audioCtxRef.current = ctx
+      const source = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 256
+      source.connect(analyser)
+
+      const data = new Uint8Array(analyser.frequencyBinCount)
+      let speechStarted = false
+      let silenceFrames = 0
+      const SILENCE_THRESHOLD = 12
+      const SILENCE_FRAMES = 18 // ~900ms de silencio
+
+      vadIntervalRef.current = setInterval(() => {
+        analyser.getByteFrequencyData(data)
+        const rms = Math.sqrt(data.reduce((s, v) => s + v * v, 0) / data.length)
+        if (rms > SILENCE_THRESHOLD) {
+          speechStarted = true
+          silenceFrames = 0
+        } else if (speechStarted) {
+          silenceFrames++
+          if (silenceFrames >= SILENCE_FRAMES) {
+            stopRecording()
+          }
+        }
+      }, 50)
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
@@ -53,13 +97,7 @@ export function useMediaRecorder({ onResult }: { onResult?: (text: string) => vo
     } catch {
       setError('Sin acceso al micrófono')
     }
-  }, [onResult])
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop()
-    }
-  }, [])
+  }, [onResult, stopRecording])
 
   return { isSupported, isRecording, isTranscribing, error, startRecording, stopRecording }
 }
