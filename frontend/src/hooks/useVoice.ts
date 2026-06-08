@@ -81,20 +81,21 @@ export function useSpeech() {
 
     const voices = voicesRef.current
 
-    // Prioridad: voz británica (como JARVIS de Iron Man) → español masculino → cualquier masculina
+    // Prioridad: español masculino → cualquier español → voz británica como fallback
     const voice =
-      voices.find((v) => v.name === 'Daniel') ||                          // British iOS
-      voices.find((v) => v.name === 'Arthur') ||                          // British iOS 16+
-      voices.find((v) => v.lang === 'en-GB') ||                           // cualquier inglés brit.
-      voices.find((v) => v.name === 'Jorge') ||                           // español masculino
-      voices.find((v) => v.lang.startsWith('es') && !v.name.includes('Monica') && !v.name.includes('Paulina')) ||
-      voices.find((v) => !v.name.toLowerCase().includes('female')) ||
+      voices.find((v) => v.name === 'Jorge') ||                           // español masculino iOS
+      voices.find((v) => v.name === 'Diego') ||                           // español argentino iOS
+      voices.find((v) => v.name === 'Andrés') ||
+      voices.find((v) => v.lang === 'es-MX' && v.name.toLowerCase().includes('male')) ||
+      voices.find((v) => v.lang.startsWith('es') && !v.name.includes('Monica') && !v.name.includes('Paulina') && !v.name.includes('Mónica')) ||
+      voices.find((v) => v.lang.startsWith('es')) ||
+      voices.find((v) => v.name === 'Daniel') ||                          // fallback brit
       voices[0]
 
     const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = voice?.lang || 'en-GB'
+    utterance.lang = 'es-MX'
     utterance.rate = 0.82
-    utterance.pitch = 0.55   // grave y autoritario
+    utterance.pitch = 0.55
     utterance.volume = 1.0
     if (voice) utterance.voice = voice
 
