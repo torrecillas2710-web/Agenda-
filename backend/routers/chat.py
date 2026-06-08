@@ -65,17 +65,16 @@ async def send_message(request: ChatRequest, db: AsyncSession = Depends(get_db))
         )
     except Exception as e:
         err_str = str(e)
-        if "credit balance is too low" in err_str or "billing" in err_str.lower():
-            raise HTTPException(
-                status_code=402,
-                detail="Sin créditos en Anthropic. Ve a console.anthropic.com → Billing y agrega créditos (mínimo $5 USD)."
-            )
-        if "authentication" in err_str.lower() or "api_key" in err_str.lower():
+        if "api_key" in err_str.lower() or "authentication" in err_str.lower() or "api key" in err_str.lower():
             raise HTTPException(
                 status_code=401,
-                detail="API Key de Anthropic inválida. Verifica la variable ANTHROPIC_API_KEY en Railway."
+                detail="GOOGLE_API_KEY inválida o no configurada. Ve a Railway → Variables y verifica GOOGLE_API_KEY."
             )
-        import traceback
+        if "quota" in err_str.lower() or "billing" in err_str.lower() or "rate_limit" in err_str.lower():
+            raise HTTPException(
+                status_code=429,
+                detail="Límite de uso de Gemini alcanzado. Intenta de nuevo en unos minutos."
+            )
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
     assistant_msg = ChatMessage(
