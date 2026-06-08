@@ -64,7 +64,9 @@ async def send_message(request: ChatRequest, db: AsyncSession = Depends(get_db))
             db=db,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error JARVIS: {str(e)}")
+        import traceback
+        detail = f"{type(e).__name__}: {str(e)}\n{traceback.format_exc()[-500:]}"
+        raise HTTPException(status_code=500, detail=detail)
 
     assistant_msg = ChatMessage(
         user_id=request.user_id,
