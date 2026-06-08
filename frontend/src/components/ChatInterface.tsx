@@ -26,16 +26,11 @@ export default function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isProcessing])
 
-  // Modo conversación: cuando JARVIS termina de hablar, vuelve a escuchar
-  useEffect(() => {
-    conversationRef.current = conversationMode
-  }, [conversationMode])
+  useEffect(() => { conversationRef.current = conversationMode }, [conversationMode])
 
   useEffect(() => {
     if (!isSpeaking && conversationRef.current && !isRecording && !isTranscribing && !isProcessing) {
-      const t = setTimeout(() => {
-        if (conversationRef.current) startRecording()
-      }, 600)
+      const t = setTimeout(() => { if (conversationRef.current) startRecording() }, 700)
       return () => clearTimeout(t)
     }
   }, [isSpeaking])
@@ -62,7 +57,7 @@ export default function ChatInterface() {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   }
 
   const toggleConversation = () => {
@@ -81,53 +76,52 @@ export default function ChatInterface() {
     try { return format(new Date(ts), 'HH:mm') } catch { return '' }
   }
 
-  const voiceState = isRecording ? 'listening' : isTranscribing || isProcessing ? 'thinking' : isSpeaking ? 'speaking' : 'idle'
+  const voiceState = isRecording ? 'listening' : (isTranscribing || isProcessing) ? 'thinking' : isSpeaking ? 'speaking' : 'idle'
+
+  const voiceLabel = {
+    listening: 'Escuchando...',
+    thinking: 'Procesando...',
+    speaking: 'JARVIS habla',
+    idle: conversationMode ? 'Modo voz activo' : 'Toca para hablar',
+  }[voiceState]
 
   return (
     <>
-      <div className="panel-header">
-        <span className="panel-title">// CANAL DE COMUNICACIÓN</span>
-        <span className="text-muted" style={{ fontSize: 10, fontFamily: 'var(--font-hud)' }}>
-          {messages.length} MSG
-        </span>
+      <div className="panel-title-bar">
+        <span>Chat</span>
+        <span className="panel-badge">{messages.length} mensajes</span>
       </div>
 
       <div className="chat-messages">
         {messages.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-icon">⬡</div>
-            <div style={{ fontFamily: 'var(--font-hud)', fontSize: 11, letterSpacing: 2, color: 'var(--primary)', marginBottom: 4 }}>
-              JARVIS ULTRA EN LÍNEA
-            </div>
-            <div>Listo para recibir instrucciones, Señor.</div>
-            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 8 }}>
-              Escribe o activa el modo conversación de voz
-            </div>
+          <div className="empty-chat">
+            <div className="empty-chat-icon">J</div>
+            <h3>JARVIS listo</h3>
+            <p>Tu asistente personal con memoria, tareas y conversación por voz.</p>
           </div>
         )}
 
         {messages.map((msg) => (
-          <div key={msg.id} className={`message-row ${msg.role}`}>
-            <div className="message-avatar">
-              {msg.role === 'assistant' ? '⬡' : '👤'}
+          <div key={msg.id} className={`msg-row ${msg.role}`}>
+            <div className="msg-avatar">
+              {msg.role === 'assistant' ? 'J' : '👤'}
             </div>
             <div>
-              <div className="message-bubble">
-                {msg.role === 'assistant' ? (
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
-                ) : (
-                  <span>{msg.content}</span>
-                )}
+              <div className="msg-bubble">
+                {msg.role === 'assistant'
+                  ? <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  : <span>{msg.content}</span>
+                }
               </div>
-              <div className="message-time">{formatTime(msg.timestamp)}</div>
+              <div className="msg-time">{formatTime(msg.timestamp)}</div>
             </div>
           </div>
         ))}
 
         {isProcessing && (
-          <div className="message-row assistant processing-row">
-            <div className="message-avatar">⬡</div>
-            <div className="typing-dots">
+          <div className="msg-row assistant">
+            <div className="msg-avatar">J</div>
+            <div className="typing-indicator">
               <div className="typing-dot" />
               <div className="typing-dot" />
               <div className="typing-dot" />
@@ -138,58 +132,39 @@ export default function ChatInterface() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Botón de modo conversación tipo Siri */}
       {isSupported && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0' }}>
+        <div className="voice-orb-wrapper">
           <button
+            className={`voice-orb${voiceState !== 'idle' ? ` ${voiceState}` : ''}`}
             onClick={toggleConversation}
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: '50%',
-              border: `2px solid ${voiceState === 'listening' ? 'var(--danger)' : voiceState === 'speaking' ? 'var(--primary)' : voiceState === 'thinking' ? '#a855f7' : 'var(--border)'}`,
-              background: conversationMode
-                ? voiceState === 'listening' ? 'rgba(239,68,68,0.15)' : voiceState === 'speaking' ? 'rgba(0,212,255,0.15)' : 'rgba(168,85,247,0.15)'
-                : 'var(--surface)',
-              cursor: 'pointer',
-              fontSize: 26,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: conversationMode ? `0 0 20px ${voiceState === 'listening' ? 'rgba(239,68,68,0.4)' : voiceState === 'speaking' ? 'rgba(0,212,255,0.4)' : 'rgba(168,85,247,0.3)'}` : 'none',
-              transition: 'all 0.3s ease',
-            }}
           >
             {voiceState === 'listening' ? '🎙' : voiceState === 'thinking' ? '⏳' : voiceState === 'speaking' ? '🔊' : '🎙'}
           </button>
-          <div style={{ marginTop: 6, fontSize: 9, fontFamily: 'var(--font-hud)', letterSpacing: 2, color: voiceState === 'listening' ? 'var(--danger)' : voiceState === 'speaking' ? 'var(--primary)' : voiceState === 'thinking' ? '#a855f7' : 'var(--text-dim)' }}>
-            {voiceState === 'listening' ? '● ESCUCHANDO' : voiceState === 'thinking' ? '◌ PROCESANDO' : voiceState === 'speaking' ? '▶ JARVIS HABLA' : conversationMode ? 'MODO VOZ ACTIVO' : 'TOCA PARA HABLAR'}
+          <div className={`voice-label${voiceState !== 'idle' ? ` ${voiceState}` : ''}`}>
+            {voiceLabel}
           </div>
-          {voiceError && (
-            <div style={{ fontSize: 9, color: 'var(--danger)', fontFamily: 'var(--font-hud)', marginTop: 4 }}>⚠ {voiceError}</div>
-          )}
+          {voiceError && <div className="voice-error">{voiceError}</div>}
         </div>
       )}
 
-      <div className="chat-input-area">
-        <div className="chat-input-row">
+      <div className="input-area">
+        <div className="input-row">
           <textarea
             ref={textareaRef}
-            className="chat-input"
+            className="chat-textarea"
             value={input}
             onChange={(e) => { setInput(e.target.value); adjustTextarea() }}
             onKeyDown={handleKeyDown}
-            placeholder="Enviar instrucción a JARVIS..."
+            placeholder="Escribe un mensaje..."
             rows={1}
             disabled={isProcessing || isRecording}
           />
           <button
-            className="btn-icon send"
+            className="send-btn"
             onClick={() => handleSend()}
             disabled={isProcessing || !input.trim()}
-            title="Enviar (Enter)"
           >
-            ➤
+            ↑
           </button>
         </div>
       </div>
