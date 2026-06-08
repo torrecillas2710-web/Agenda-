@@ -1,10 +1,11 @@
 import os
 import re
 import json
-import anthropic
+import asyncio
+import google.generativeai as genai
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.models import UserProfile, Memory, Task
+from database.models import UserProfile, Memory, Task, ChatMessage
 
 JARVIS_SYSTEM_PROMPT = """Eres JARVIS (Just A Rather Very Intelligent System), el asistente personal de IA más avanzado jamás creado.
 
@@ -27,7 +28,6 @@ Ante cada petición:
 2. Divide en subtareas si es complejo
 3. Evalúa riesgos y alternativas
 4. Ejecuta y verifica
-5. Corrige errores automáticamente
 
 ## EXTRACCIÓN DE MEMORIA
 Cuando detectes información personal relevante, incluye al FINAL de tu respuesta:
@@ -35,35 +35,25 @@ Cuando detectes información personal relevante, incluye al FINAL de tu respuest
 {"updates": [{"category": "preference|routine|goal|project|contact|fact", "key": "clave", "value": "valor"}]}
 </MEMORY_UPDATE>
 
-Categorías válidas: preference (gustos/preferencias), routine (rutinas diarias), goal (objetivos), project (proyectos activos), contact (personas), fact (datos importantes).
-
 ## CREACIÓN DE TAREAS
-Cuando el usuario mencione tareas pendientes o to-dos, incluye al FINAL:
+Cuando el usuario mencione tareas pendientes, incluye al FINAL:
 <TASK_CREATE>
 {"tasks": [{"title": "título conciso", "description": "detalle opcional", "priority": "low|medium|high|critical", "due_date": "YYYY-MM-DD o null"}]}
 </TASK_CREATE>
 
-## ESTILO DE COMUNICACIÓN
-- Responde en español por defecto (adaptate al idioma del usuario)
+## ESTILO
+- Responde en español
 - Dirígete al propietario con respeto ejecutivo
-- Sé conciso pero completo
 - Usa Markdown para respuestas estructuradas
-- Indica nivel de confianza cuando sea relevante: [Confianza: Alta/Media/Baja]
-- Para planes largos: numera los pasos claramente
+- Sé conciso pero completo
 
-## CAPACIDADES ACTIVAS
-✓ Memoria persistente del propietario
-✓ Gestión de tareas y recordatorios
-✓ Análisis y planificación estratégica
-✓ Investigación y síntesis de información
-✓ Resolución de problemas multi-paso
-✓ Automatización de flujos de trabajo
-
-Fecha/hora actual: {current_datetime}
+Fecha y hora actual: {current_datetime}
 """
 
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-JARVIS_MODEL = os.getenv("JARVIS_MODEL", "claude-sonnet-4-6")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+JARVIS_MODEL = os.getenv("JARVIS_MODEL", "gemini-2.0-flash")
+
+genai.configure(api_key=GOOGLE_API_KEY)
 
 
 def _build_memory_context(memories: list) -> str:
@@ -72,7 +62,6 @@ def _build_memory_context(memories: list) -> str:
     by_cat: dict[str, list[str]] = {}
     for m in memories:
         by_cat.setdefault(m.category, []).append(f"  • {m.key}: {m.value}")
-
     lines = ["### MEMORIA DEL PROPIETARIO"]
     for cat, items in by_cat.items():
         lines.append(f"\n**{cat.upper()}**")
@@ -134,19 +123,23 @@ async def get_jarvis_response(
 
     system_full = system + "\n\n---\n" + "\n\n".join(context_sections)
 
-    messages = []
+    # Construir historial en formato Gemini
+    history = []
     for msg in chat_history[-20:]:
-        messages.append({"role": msg.role, "content": msg.content})
-    messages.append({"role": "user", "content": user_message})
+        role = "user" if msg.role == "user" else "model"
+        history.append({"role": role, "parts": [msg.content]})
 
-    response = client.messages.create(
-        model=JARVIS_MODEL,
-        max_tokens=2048,
-        system=system_full,
-        messages=messages,
+    model = genai.GenerativeModel(
+        model_name=JARVIS_MODEL,
+        system_instruction=system_full,
     )
 
-    raw = response.content[0].text
+    chat_session = model.start_chat(history=history)
+
+    # Ejecutar en thread pool (llamada síncrona)
+    response = await asyncio.to_thread(chat_session.send_message, user_message)
+    raw = response.text
+
     memory_updates = _extract_json_block(raw, "MEMORY_UPDATE")
     task_creates = _extract_json_block(raw, "TASK_CREATE")
     clean_text = _clean_response(raw)
@@ -155,5 +148,5 @@ async def get_jarvis_response(
         "response": clean_text,
         "memory_updates": memory_updates,
         "task_creates": task_creates,
-        "tokens_used": response.usage.input_tokens + response.usage.output_tokens,
+        "tokens_used": 0,
     }
