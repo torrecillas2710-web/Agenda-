@@ -6,6 +6,8 @@ interface UseVoiceOptions {
   onEnd?: () => void
 }
 
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+
 export function useVoice({ onResult, onStart, onEnd }: UseVoiceOptions = {}) {
   const [isSupported, setIsSupported] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -50,7 +52,7 @@ export function useVoice({ onResult, onStart, onEnd }: UseVoiceOptions = {}) {
     }
   }, [isListening])
 
-  return { isSupported, isListening, voiceError, startListening, stopListening }
+  return { isSupported: isSupported && !isIOS, isIOS, isListening, voiceError, startListening, stopListening }
 }
 
 export function useSpeech() {

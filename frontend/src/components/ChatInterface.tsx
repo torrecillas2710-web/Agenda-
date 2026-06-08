@@ -13,7 +13,7 @@ export default function ChatInterface() {
 
   const { isSpeaking, speak, stop: stopSpeaking } = useSpeech()
 
-  const { isSupported, isListening, voiceError, startListening, stopListening } = useVoice({
+  const { isSupported, isIOS, isListening, voiceError, startListening, stopListening } = useVoice({
     onResult: (transcript) => {
       setInput(transcript)
       setTimeout(() => handleSend(transcript), 300)
@@ -120,7 +120,15 @@ export default function ChatInterface() {
 
       <div className="chat-input-area">
         <div className="chat-input-row">
-          {isSupported && (
+          {isIOS ? (
+            <button
+              className="voice-btn"
+              onClick={() => alert('En iPhone: toca el campo de texto, luego usa el 🎙 micrófono del teclado de iOS para hablar.')}
+              title="Usar micrófono del teclado iOS"
+            >
+              🎙
+            </button>
+          ) : isSupported && (
             <button
               className={`voice-btn${isListening ? ' listening' : ''}`}
               onClick={isListening ? stopListening : startListening}
