@@ -90,7 +90,8 @@ export const useJarvisStore = create<JarvisStore>((set, get) => ({
   loadHistory: async () => {
     try {
       const history = await chatAPI.getHistory()
-      const messages: Message[] = history.map((m: any, i: number) => ({
+      const raw = Array.isArray(history) ? history : []
+      const messages: Message[] = raw.map((m: any, i: number) => ({
         id: `h-${i}`,
         role: m.role,
         content: m.content,
@@ -102,15 +103,15 @@ export const useJarvisStore = create<JarvisStore>((set, get) => ({
 
   loadMemories: async () => {
     try {
-      const memories = await memoryAPI.getAll()
-      set({ memories })
+      const data = await memoryAPI.getAll()
+      set({ memories: Array.isArray(data) ? data : [] })
     } catch {}
   },
 
   loadTasks: async () => {
     try {
-      const tasks = await taskAPI.getAll()
-      set({ tasks })
+      const data = await taskAPI.getAll()
+      set({ tasks: Array.isArray(data) ? data : [] })
     } catch {}
   },
 
