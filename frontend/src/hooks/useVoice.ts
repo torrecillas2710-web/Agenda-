@@ -75,20 +75,28 @@ export function useSpeech() {
     unlockedRef.current = true
   }, [])
 
-  const speak = useCallback((text: string, lang = 'es-ES') => {
+  const speak = useCallback((text: string) => {
     if (!window.speechSynthesis) return
     window.speechSynthesis.cancel()
 
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = lang
-    utterance.rate = 0.88
-    utterance.pitch = 0.82
-    utterance.volume = 0.95
+    const voices = voicesRef.current
 
-    const preferred = voicesRef.current.find(
-      (v) => v.lang.startsWith('es') && v.name.toLowerCase().includes('google')
-    ) ?? voicesRef.current.find((v) => v.lang.startsWith('es'))
-    if (preferred) utterance.voice = preferred
+    // Prioridad: voz británica (como JARVIS de Iron Man) → español masculino → cualquier masculina
+    const voice =
+      voices.find((v) => v.name === 'Daniel') ||                          // British iOS
+      voices.find((v) => v.name === 'Arthur') ||                          // British iOS 16+
+      voices.find((v) => v.lang === 'en-GB') ||                           // cualquier inglés brit.
+      voices.find((v) => v.name === 'Jorge') ||                           // español masculino
+      voices.find((v) => v.lang.startsWith('es') && !v.name.includes('Monica') && !v.name.includes('Paulina')) ||
+      voices.find((v) => !v.name.toLowerCase().includes('female')) ||
+      voices[0]
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = voice?.lang || 'en-GB'
+    utterance.rate = 0.82
+    utterance.pitch = 0.55   // grave y autoritario
+    utterance.volume = 1.0
+    if (voice) utterance.voice = voice
 
     utterance.onstart = () => setIsSpeaking(true)
     utterance.onend = () => setIsSpeaking(false)
