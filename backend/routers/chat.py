@@ -70,12 +70,7 @@ async def send_message(request: ChatRequest, db: AsyncSession = Depends(get_db))
                 status_code=401,
                 detail="GOOGLE_API_KEY inválida o no configurada. Ve a Railway → Variables y verifica GOOGLE_API_KEY."
             )
-        if "quota" in err_str.lower() or "billing" in err_str.lower() or "rate_limit" in err_str.lower():
-            raise HTTPException(
-                status_code=429,
-                detail="Límite de uso de Gemini alcanzado. Intenta de nuevo en unos minutos."
-            )
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gemini error: {type(e).__name__}: {str(e)}")
 
     assistant_msg = ChatMessage(
         user_id=request.user_id,
