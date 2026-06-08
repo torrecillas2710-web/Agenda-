@@ -79,7 +79,7 @@ export const useJarvisStore = create<JarvisStore>((set, get) => ({
       const errMsg: Message = {
         id: `e-${Date.now()}`,
         role: 'assistant',
-        content: `⚠️ Error de conexión con el servidor JARVIS. Verifica que el backend esté activo.\n\n\`${err?.message || 'Error desconocido'}\``,
+        content: `⚠️ Error del servidor JARVIS.\n\n\`${err?.response?.data?.detail || err?.message || 'Error desconocido'}\``,
         timestamp: new Date().toISOString(),
       }
       set((s) => ({ messages: [...s.messages, errMsg], isProcessing: false }))

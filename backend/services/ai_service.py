@@ -63,7 +63,7 @@ Fecha/hora actual: {current_datetime}
 """
 
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-JARVIS_MODEL = os.getenv("JARVIS_MODEL", "claude-opus-4-8")
+JARVIS_MODEL = os.getenv("JARVIS_MODEL", "claude-sonnet-4-6")
 
 
 def _build_memory_context(memories: list) -> str:
