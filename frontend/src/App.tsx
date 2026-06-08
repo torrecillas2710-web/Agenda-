@@ -1,5 +1,10 @@
+import ErrorBoundary from './components/ErrorBoundary'
 import JarvisHUD from './components/JarvisHUD'
 
 export default function App() {
-  return <JarvisHUD />
+  return (
+    <ErrorBoundary>
+      <JarvisHUD />
+    </ErrorBoundary>
+  )
 }
