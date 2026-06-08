@@ -357,20 +357,20 @@
     if(data.diario)  { diario=data.diario;   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
   }
 
+  function syncNow(){
+    if(window._sb) window._sb.load(function(data){ applyCloudData(data); });
+  }
+
   function initSync(){
     if(!window._sb) return;
-    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if(isIOS){
-      // On iOS: save to cloud but don't load (Safari blocks incoming requests)
-      console.log('iOS - save-only mode');
-      return;
-    }
-    // On desktop: load and sync normally
-    window._sb.load(function(data){ applyCloudData(data); });
+    // Load on all devices (iOS + desktop)
+    syncNow();
     if(window._sb.listen) window._sb.listen(function(data){ applyCloudData(data); });
-    setInterval(function(){
-      if(window._sb) window._sb.load(function(data){ applyCloudData(data); });
-    }, 10000);
+    // Poll every 3 seconds
+    setInterval(syncNow, 3000);
+    // Sync immediately when tab becomes visible or window gets focus
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden) syncNow(); });
+    window.addEventListener('focus', syncNow);
   }
 
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
