@@ -1,7 +1,9 @@
 import axios from 'axios'
 import type { Memory, Task, UserProfile } from '../types'
 
-const api = axios.create({ baseURL: '' })
+const api = axios.create({
+  baseURL: (import.meta.env.VITE_API_URL as string) ?? '',
+})
 
 export const chatAPI = {
   sendMessage: async (message: string, userId = 1) => {
