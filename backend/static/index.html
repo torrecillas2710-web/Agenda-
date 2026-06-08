@@ -336,16 +336,18 @@
   function saveDiario(){  localStorage.setItem('ag_diario',  JSON.stringify(diario));  scheduleSync(); }
 
   var syncTimer = null;
+  var lastSaveTime = 0;
   function scheduleSync(){
     clearTimeout(syncTimer);
     syncTimer = setTimeout(function(){
-      // Always try to save to cloud on any device
+      lastSaveTime = Date.now();
       if(window._sb) window._sb.save(checks, agendas, notas, diario);
     }, 800);
   }
 
   function applyCloudData(data){
-    // Only apply if cloud has actual data
+    // Don't overwrite local data within 6 seconds of a save (avoid race condition)
+    if(Date.now() - lastSaveTime < 6000) return;
     var hasData = (data.checks && data.checks.length > 0) ||
                   (data.agendas && data.agendas.length > 0) ||
                   (data.notas && data.notas.length > 0) ||
