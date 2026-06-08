@@ -58,12 +58,21 @@ export function useVoice({ onResult, onStart, onEnd }: UseVoiceOptions = {}) {
 export function useSpeech() {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const voicesRef = useRef<SpeechSynthesisVoice[]>([])
+  const unlockedRef = useRef(false)
 
   useEffect(() => {
     const load = () => { voicesRef.current = window.speechSynthesis?.getVoices() || [] }
     load()
     window.speechSynthesis?.addEventListener('voiceschanged', load)
     return () => window.speechSynthesis?.removeEventListener('voiceschanged', load)
+  }, [])
+
+  const unlock = useCallback(() => {
+    if (unlockedRef.current || !window.speechSynthesis) return
+    const u = new SpeechSynthesisUtterance(' ')
+    u.volume = 0
+    window.speechSynthesis.speak(u)
+    unlockedRef.current = true
   }, [])
 
   const speak = useCallback((text: string, lang = 'es-ES') => {
@@ -78,7 +87,7 @@ export function useSpeech() {
 
     const preferred = voicesRef.current.find(
       (v) => v.lang.startsWith('es') && v.name.toLowerCase().includes('google')
-    )
+    ) ?? voicesRef.current.find((v) => v.lang.startsWith('es'))
     if (preferred) utterance.voice = preferred
 
     utterance.onstart = () => setIsSpeaking(true)
@@ -93,5 +102,5 @@ export function useSpeech() {
     setIsSpeaking(false)
   }, [])
 
-  return { isSpeaking, speak, stop }
+  return { isSpeaking, speak, stop, unlock }
 }

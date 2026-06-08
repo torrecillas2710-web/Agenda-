@@ -12,7 +12,7 @@ export default function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const { isSpeaking, speak, stop: stopSpeaking } = useSpeech()
+  const { isSpeaking, speak, stop: stopSpeaking, unlock } = useSpeech()
 
   const { isSupported, isRecording, isTranscribing, error: voiceError, startRecording, stopRecording } = useMediaRecorder({
     onResult: (transcript) => {
@@ -62,7 +62,7 @@ export default function ChatInterface() {
           <button
             className={`btn-icon${autoSpeak ? ' active' : ''}`}
             style={{ width: 32, height: 32, fontSize: 14 }}
-            onClick={() => { setAutoSpeak(!autoSpeak); if (isSpeaking) stopSpeaking() }}
+            onClick={() => { const next = !autoSpeak; setAutoSpeak(next); if (next) unlock(); else stopSpeaking() }}
             title={autoSpeak ? 'Silenciar respuestas' : 'Leer respuestas en voz alta'}
           >
             {autoSpeak ? '🔊' : '🔇'}
