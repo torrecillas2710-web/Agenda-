@@ -803,3 +803,196 @@ body::after {
   padding: 40px;
 }
 .empty-icon { font-size: 36px; opacity: 0.4; }
+
+/* ══════════════════════════════════════════════════════════════
+   MÓVIL — Diseño completo para pantallas pequeñas
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* Layout principal: una sola columna, nav abajo */
+  .main-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    padding-bottom: 60px; /* espacio para nav inferior */
+  }
+
+  /* Ocultar panel derecho en móvil */
+  .right-panel { display: none; }
+
+  /* Nav sidebar → barra inferior */
+  .nav-sidebar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+    height: 60px;
+    padding: 0 8px;
+    border-right: none;
+    border-top: 1px solid var(--border-active);
+    background: rgba(4, 6, 15, 0.97);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+    gap: 0;
+  }
+
+  .nav-btn {
+    width: 52px; height: 52px;
+    font-size: 22px;
+    border-radius: 12px;
+  }
+
+  .nav-btn.active::before {
+    left: 25%; right: 25%;
+    top: auto; bottom: -1px;
+    width: auto; height: 2px;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .nav-spacer { display: none; }
+  .nav-version { display: none; }
+
+  /* Topbar simplificado */
+  .topbar {
+    padding: 0 14px;
+    height: 48px;
+  }
+
+  .topbar-logo {
+    font-size: 15px;
+    letter-spacing: 3px;
+  }
+
+  .topbar-logo .version { display: none; }
+
+  .topbar-center {
+    gap: 10px;
+  }
+
+  .topbar-clock {
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  .topbar-right { display: none; }
+
+  /* Status badge más compacto */
+  .status-badge {
+    font-size: 8px;
+    letter-spacing: 1px;
+  }
+
+  .status-badge span { display: none; }
+
+  /* Content panel ocupa todo */
+  .content-panel {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Chat — más espacio para escribir */
+  .chat-messages {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .message-bubble {
+    max-width: 88%;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  /* Input area más grande y accesible */
+  .chat-input-area {
+    padding: 10px 12px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .chat-input-row {
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  .chat-input {
+    font-size: 16px; /* Evita zoom en iOS */
+    min-height: 48px;
+    padding: 12px 14px;
+    border-radius: 12px;
+  }
+
+  .btn-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+    border-radius: 12px;
+    flex-shrink: 0;
+  }
+
+  .voice-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+    border-radius: 12px;
+  }
+
+  /* Panel header */
+  .panel-header {
+    padding: 10px 14px;
+  }
+
+  .panel-title {
+    font-size: 10px;
+    letter-spacing: 2px;
+  }
+
+  /* Memory panel */
+  .memory-list {
+    padding: 12px;
+  }
+
+  /* Task list */
+  .task-list {
+    padding: 12px;
+  }
+
+  .task-item {
+    padding: 10px 12px;
+  }
+
+  .task-check {
+    width: 22px; height: 22px;
+  }
+
+  /* Dashboard */
+  .dashboard-grid {
+    padding: 12px;
+    gap: 10px;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dash-value {
+    font-size: 22px;
+  }
+
+  /* Forms */
+  .form-row {
+    padding: 10px 12px;
+    flex-wrap: wrap;
+  }
+
+  .input-field, .select-field {
+    font-size: 16px; /* Evita zoom en iOS */
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .btn-primary {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  /* Empty state */
+  .empty-state {
+    padding: 24px 20px;
+  }
+}
