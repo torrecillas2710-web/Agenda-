@@ -4,11 +4,13 @@ import { useJarvisStore } from '../store/jarvisStore'
 import { useSpeech } from '../hooks/useVoice'
 import { useMediaRecorder } from '../hooks/useMediaRecorder'
 import { format } from 'date-fns'
+import VoiceMode from './VoiceMode'
 
 export default function ChatInterface() {
   const { messages, isProcessing, sendMessage } = useJarvisStore()
   const [input, setInput] = useState('')
   const [conversationMode, setConversationMode] = useState(false)
+  const [voiceMode, setVoiceMode] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const conversationRef = useRef(false)
@@ -87,6 +89,8 @@ export default function ChatInterface() {
 
   return (
     <>
+      {voiceMode && <VoiceMode onExit={() => setVoiceMode(false)} />}
+
       <div className="panel-title-bar">
         <span>Chat</span>
         <span className="panel-badge">{messages.length} mensajes</span>
@@ -135,14 +139,14 @@ export default function ChatInterface() {
       {isSupported && (
         <div className="voice-orb-wrapper">
           <button
-            className={`voice-orb${voiceState !== 'idle' ? ` ${voiceState}` : ''}`}
-            onClick={toggleConversation}
+            className="voice-orb"
+            onClick={() => setVoiceMode(true)}
+            title="Iniciar conversación de voz"
+            style={{ fontSize: 22 }}
           >
-            {voiceState === 'listening' ? '🎙' : voiceState === 'thinking' ? '⏳' : voiceState === 'speaking' ? '🔊' : '🎙'}
+            🎙
           </button>
-          <div className={`voice-label${voiceState !== 'idle' ? ` ${voiceState}` : ''}`}>
-            {voiceLabel}
-          </div>
+          <div className="voice-label">Habla con JARVIS</div>
           {voiceError && <div className="voice-error">{voiceError}</div>}
         </div>
       )}
