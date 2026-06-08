@@ -9,6 +9,7 @@ interface UseVoiceOptions {
 export function useVoice({ onResult, onStart, onEnd }: UseVoiceOptions = {}) {
   const [isSupported, setIsSupported] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
   const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
@@ -19,15 +20,20 @@ export function useVoice({ onResult, onStart, onEnd }: UseVoiceOptions = {}) {
     const rec = new SR()
     rec.continuous = false
     rec.interimResults = false
-    rec.lang = 'es-ES'
+    rec.lang = 'es-MX'
 
     rec.onresult = (e: any) => {
       const transcript: string = e.results[0][0].transcript
+      setVoiceError(null)
       onResult?.(transcript)
     }
-    rec.onstart = () => { setIsListening(true); onStart?.() }
+    rec.onstart = () => { setIsListening(true); setVoiceError(null); onStart?.() }
     rec.onend = () => { setIsListening(false); onEnd?.() }
-    rec.onerror = () => { setIsListening(false); onEnd?.() }
+    rec.onerror = (e: any) => {
+      setIsListening(false)
+      setVoiceError(e.error || 'error')
+      onEnd?.()
+    }
 
     recognitionRef.current = rec
   }, [])
@@ -44,7 +50,7 @@ export function useVoice({ onResult, onStart, onEnd }: UseVoiceOptions = {}) {
     }
   }, [isListening])
 
-  return { isSupported, isListening, startListening, stopListening }
+  return { isSupported, isListening, voiceError, startListening, stopListening }
 }
 
 export function useSpeech() {

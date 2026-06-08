@@ -13,7 +13,7 @@ export default function ChatInterface() {
 
   const { isSpeaking, speak, stop: stopSpeaking } = useSpeech()
 
-  const { isSupported, isListening, startListening, stopListening } = useVoice({
+  const { isSupported, isListening, voiceError, startListening, stopListening } = useVoice({
     onResult: (transcript) => {
       setInput(transcript)
       setTimeout(() => handleSend(transcript), 300)
@@ -160,6 +160,11 @@ export default function ChatInterface() {
         {isListening && (
           <div style={{ marginTop: 6, fontSize: 10, color: 'var(--danger)', fontFamily: 'var(--font-hud)', letterSpacing: 2, textAlign: 'center' }}>
             ● ESCUCHANDO — HABLA AHORA
+          </div>
+        )}
+        {voiceError && (
+          <div style={{ marginTop: 6, fontSize: 10, color: 'var(--danger)', fontFamily: 'var(--font-hud)', letterSpacing: 1, textAlign: 'center' }}>
+            ⚠ VOZ: {voiceError}
           </div>
         )}
       </div>
