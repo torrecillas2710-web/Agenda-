@@ -138,7 +138,7 @@ export default function ChatInterface() {
             value={input}
             onChange={(e) => { setInput(e.target.value); adjustTextarea() }}
             onKeyDown={handleKeyDown}
-            placeholder={isListening ? 'Escuchando...' : 'Enviar instrucción a JARVIS...'}
+            placeholder={isRecording ? 'Grabando...' : isTranscribing ? 'Transcribiendo...' : 'Enviar instrucción a JARVIS...'}
             rows={1}
             disabled={isProcessing || isRecording}
           />
