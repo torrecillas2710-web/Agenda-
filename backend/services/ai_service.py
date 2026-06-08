@@ -1,8 +1,7 @@
 import os
 import re
 import json
-import asyncio
-import google.generativeai as genai
+from groq import Groq
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import UserProfile, Memory, Task, ChatMessage
@@ -50,10 +49,10 @@ Cuando el usuario mencione tareas pendientes, incluye al FINAL:
 Fecha y hora actual: {current_datetime}
 """
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-JARVIS_MODEL = os.getenv("JARVIS_MODEL", "gemini-2.0-flash")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+JARVIS_MODEL = os.getenv("JARVIS_MODEL", "llama-3.3-70b-versatile")
 
-genai.configure(api_key=GOOGLE_API_KEY)
+client = Groq(api_key=GROQ_API_KEY)
 
 
 def _build_memory_context(memories: list) -> str:
@@ -123,22 +122,17 @@ async def get_jarvis_response(
 
     system_full = system + "\n\n---\n" + "\n\n".join(context_sections)
 
-    # Construir historial en formato Gemini
-    history = []
+    messages = [{"role": "system", "content": system_full}]
     for msg in chat_history[-20:]:
-        role = "user" if msg.role == "user" else "model"
-        history.append({"role": role, "parts": [msg.content]})
+        messages.append({"role": msg.role, "content": msg.content})
+    messages.append({"role": "user", "content": user_message})
 
-    model = genai.GenerativeModel(
-        model_name=JARVIS_MODEL,
-        system_instruction=system_full,
+    completion = client.chat.completions.create(
+        model=JARVIS_MODEL,
+        messages=messages,
+        max_tokens=2048,
     )
-
-    chat_session = model.start_chat(history=history)
-
-    # Ejecutar en thread pool (llamada síncrona)
-    response = await asyncio.to_thread(chat_session.send_message, user_message)
-    raw = response.text
+    raw = completion.choices[0].message.content
 
     memory_updates = _extract_json_block(raw, "MEMORY_UPDATE")
     task_creates = _extract_json_block(raw, "TASK_CREATE")
@@ -148,5 +142,5 @@ async def get_jarvis_response(
         "response": clean_text,
         "memory_updates": memory_updates,
         "task_creates": task_creates,
-        "tokens_used": 0,
+        "tokens_used": completion.usage.total_tokens if completion.usage else 0,
     }
