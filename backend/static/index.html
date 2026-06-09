@@ -336,27 +336,25 @@
   function saveDiario(){  localStorage.setItem('ag_diario',  JSON.stringify(diario));  scheduleSync(); }
 
   var syncTimer = null;
-  var lastSaveTime = 0;
+  var lastCloudAt = '';
+
   function scheduleSync(){
     clearTimeout(syncTimer);
     syncTimer = setTimeout(function(){
-      lastSaveTime = Date.now();
       if(window._sb) window._sb.save(checks, agendas, notas, diario);
-    }, 800);
+    }, 300);
   }
 
   function applyCloudData(data){
-    // Don't overwrite local data within 6 seconds of a save (avoid race condition)
-    if(Date.now() - lastSaveTime < 6000) return;
-    var hasData = (data.checks && data.checks.length > 0) ||
-                  (data.agendas && data.agendas.length > 0) ||
-                  (data.notas && data.notas.length > 0) ||
-                  (data.diario && data.diario.length > 0);
-    if(!hasData) return;
-    if(data.checks)  { checks=data.checks;   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
-    if(data.agendas) { agendas=data.agendas; localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
-    if(data.notas)   { notas=data.notas;     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
-    if(data.diario)  { diario=data.diario;   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
+    if(!data || !data.updated_at) return;
+    // Skip if we already applied this exact version
+    if(data.updated_at === lastCloudAt) return;
+    lastCloudAt = data.updated_at;
+    // Apply all arrays (including empty — to sync deletions)
+    if(Array.isArray(data.checks))  { checks=data.checks;   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
+    if(Array.isArray(data.agendas)) { agendas=data.agendas; localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
+    if(Array.isArray(data.notas))   { notas=data.notas;     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
+    if(Array.isArray(data.diario))  { diario=data.diario;   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
   }
 
   function syncNow(){
@@ -365,12 +363,9 @@
 
   function initSync(){
     if(!window._sb) return;
-    // Load on all devices (iOS + desktop)
     syncNow();
     if(window._sb.listen) window._sb.listen(function(data){ applyCloudData(data); });
-    // Poll every 3 seconds
     setInterval(syncNow, 3000);
-    // Sync immediately when tab becomes visible or window gets focus
     document.addEventListener('visibilitychange', function(){ if(!document.hidden) syncNow(); });
     window.addEventListener('focus', syncNow);
   }
