@@ -63,7 +63,7 @@
     .progress-bar{height:4px;background:var(--surface);border-radius:4px;overflow:hidden}
     .progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px;transition:width .4s ease}
     /* CHECKLIST */
-    .check-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px}
+    .check-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px}
     .check-item.done{background:var(--done);border-color:#2a4a2a;opacity:.7}
     .check-item.done .item-text{text-decoration:line-through;color:var(--done-text)}
     .checkbox{width:22px;height:22px;border:2px solid var(--accent);border-radius:6px;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
@@ -71,6 +71,14 @@
     .checkbox-check{display:none;color:#fff;font-size:13px;font-weight:700}
     .check-item.done .checkbox-check{display:block}
     .item-text{flex:1;font-size:14px;line-height:1.4;color:var(--text)}
+    /* TAGS */
+    .tag-pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:20px;margin-right:6px;vertical-align:middle}
+    .tag-filter-wrap{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+    .tag-filter-btn{background:var(--card);border:1px solid var(--border);border-radius:20px;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;padding:4px 12px;cursor:pointer;transition:all .2s;letter-spacing:.03em}
+    .tag-filter-btn.active{color:#000}
+    .tag-selector{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+    .tag-opt{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s,border-color .15s;flex-shrink:0}
+    .tag-opt.selected{border-color:#fff;transform:scale(1.15)}
     /* AGENDA */
     .agenda-form{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px}
     .agenda-form input,.agenda-form textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:8px;transition:border-color .2s;display:block}
@@ -222,6 +230,8 @@
       <input type="text" id="check-input" placeholder="Agregar tarea..." onkeydown="if(event.key==='Enter')addCheck()"/>
       <button class="add-btn" onclick="addCheck()">+</button>
     </div>
+    <div class="tag-selector" id="tag-selector"></div>
+    <div class="tag-filter-wrap" id="tag-filter-wrap"></div>
     <div class="section-header">
       <div class="section-title">Pendientes</div>
       <div class="count-badge" id="pending-count">0</div>
@@ -453,29 +463,83 @@
     }
   };
 
+  // TAGS
+  var TAGS=[
+    {id:'trabajo', label:'Trabajo',  color:'#007fff'},
+    {id:'personal',label:'Personal', color:'#a050ff'},
+    {id:'urgente', label:'Urgente',  color:'#ff4444'},
+    {id:'casa',    label:'Casa',     color:'#00c87a'},
+  ];
+  var selectedTag='';
+  var filterTag='';
+
+  function initTagSelector(){
+    var wrap=document.getElementById('tag-selector');
+    wrap.innerHTML='<span style="font-size:11px;color:var(--muted);align-self:center;margin-right:2px">Etiqueta:</span>'+
+      TAGS.map(function(t){
+        return '<div class="tag-opt'+(selectedTag===t.id?' selected':'')+'" style="background:'+t.color+'" title="'+t.label+'" onclick="selectTag(\''+t.id+'\')"></div>';
+      }).join('')+
+      '<div class="tag-opt'+(selectedTag===''?' selected':'')+'" style="background:var(--border);border:1px solid var(--muted)" title="Sin etiqueta" onclick="selectTag(\'\')"></div>';
+  }
+
+  function renderTagFilters(){
+    var used={};
+    checks.forEach(function(c){ if(c.tag) used[c.tag]=true; });
+    var wrap=document.getElementById('tag-filter-wrap');
+    var anyUsed=Object.keys(used).length>0;
+    wrap.style.display=anyUsed?'flex':'none';
+    if(!anyUsed) return;
+    wrap.innerHTML='<button class="tag-filter-btn'+(filterTag===''?' active':'')+'" style="'+(filterTag===''?'background:var(--accent);border-color:var(--accent)':'')+'" onclick="setTagFilter(\'\')">Todas</button>'+
+      TAGS.filter(function(t){ return used[t.id]; }).map(function(t){
+        var on=filterTag===t.id;
+        return '<button class="tag-filter-btn'+(on?' active':'')+'" style="'+(on?'background:'+t.color+';border-color:'+t.color:'border-color:'+t.color+';color:'+t.color)+'" onclick="setTagFilter(\''+t.id+'\')">'+t.label+'</button>';
+      }).join('');
+  }
+
+  window.selectTag=function(id){ selectedTag=id; initTagSelector(); };
+  window.setTagFilter=function(id){ filterTag=id; renderChecks(); };
+
+  function tagPill(tagId){
+    var t=TAGS.find(function(x){ return x.id===tagId; });
+    if(!t) return '';
+    return '<span class="tag-pill" style="background:'+t.color+'22;color:'+t.color+'">'+t.label+'</span>';
+  }
+
   // CHECKLIST
   function renderChecks(){
-    var pending=checks.filter(function(c){ return !c.done; });
-    var done=checks.filter(function(c){ return c.done; });
-    document.getElementById('pending-count').textContent=pending.length;
+    var allPending=checks.filter(function(c){ return !c.done; });
+    var allDone=checks.filter(function(c){ return c.done; });
+    var pending=filterTag?allPending.filter(function(c){ return c.tag===filterTag; }):allPending;
+    var done=filterTag?allDone.filter(function(c){ return c.tag===filterTag; }):allDone;
+    document.getElementById('pending-count').textContent=allPending.length;
     var pw=document.getElementById('progress-wrap');
     if(checks.length>0){
       pw.style.display='block';
-      document.getElementById('progress-fill').style.width=Math.round(done.length/checks.length*100)+'%';
-      document.getElementById('progress-text').textContent=done.length+'/'+checks.length;
+      document.getElementById('progress-fill').style.width=Math.round(allDone.length/checks.length*100)+'%';
+      document.getElementById('progress-text').textContent=allDone.length+'/'+checks.length;
     } else pw.style.display='none';
+    renderTagFilters();
+    function itemHtml(c,isDone){
+      var t=TAGS.find(function(x){ return x.id===c.tag; });
+      var borderColor=t?t.color:'var(--border)';
+      var cls='check-item'+(isDone?' done':'');
+      return '<div class="'+cls+'" style="border-left-color:'+borderColor+'">'+
+        '<div class="checkbox" onclick="toggleCheck(\''+c.id+'\')"><span class="checkbox-check">✓</span></div>'+
+        '<span class="item-text">'+tagPill(c.tag)+esc(c.text)+'</span>'+
+        '<button class="delete-btn" onclick="deleteCheck(\''+c.id+'\')">✕</button></div>';
+    }
     document.getElementById('check-list').innerHTML=pending.length===0
-      ?'<div class="empty"><div class="empty-icon">🎯</div><p>'+(checks.length===0?'Agrega tu primera tarea':'¡Todo listo, carnal! 🔥')+'</p></div>'
-      :pending.map(function(c){ return '<div class="check-item"><div class="checkbox" onclick="toggleCheck(\''+c.id+'\')"><span class="checkbox-check">✓</span></div><span class="item-text">'+esc(c.text)+'</span><button class="delete-btn" onclick="deleteCheck(\''+c.id+'\')">✕</button></div>'; }).join('');
+      ?'<div class="empty"><div class="empty-icon">🎯</div><p>'+(checks.length===0?'Agrega tu primera tarea':'¡Todo listo! 🔥')+'</p></div>'
+      :pending.map(function(c){ return itemHtml(c,false); }).join('');
     var dh=document.getElementById('done-header'), dl=document.getElementById('done-list');
     if(done.length>0){
       dh.style.display='block';
-      dl.innerHTML=done.map(function(c){ return '<div class="check-item done"><div class="checkbox" onclick="toggleCheck(\''+c.id+'\')"><span class="checkbox-check">✓</span></div><span class="item-text">'+esc(c.text)+'</span><button class="delete-btn" onclick="deleteCheck(\''+c.id+'\')">✕</button></div>'; }).join('');
+      dl.innerHTML=done.map(function(c){ return itemHtml(c,true); }).join('');
     } else { dh.style.display='none'; dl.innerHTML=''; }
   }
   window.addCheck=function(){
     var inp=document.getElementById('check-input'), text=inp.value.trim(); if(!text) return;
-    checks.unshift({id:''+Date.now(),text:text,done:false});
+    checks.unshift({id:''+Date.now(),text:text,done:false,tag:selectedTag||''});
     saveChecks(); renderChecks(); inp.value='';
   };
   window.toggleCheck=function(id){
@@ -872,6 +936,7 @@
   };
 
   // INIT
+  initTagSelector();
   renderChecks(); renderAgendas(); renderNotas();
   setActiveDay(todayKey); renderCalendar();
   initSearch(); doSearch();
