@@ -1,4 +1,4 @@
-var CACHE = 'agenda-v4';
+var CACHE = 'agenda-v5';
 
 self.addEventListener('install', function(e){
   e.waitUntil(
