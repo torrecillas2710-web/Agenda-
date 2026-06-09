@@ -158,6 +158,12 @@
     .empty .empty-icon{font-size:40px;margin-bottom:12px}
     .empty p{font-size:14px;font-weight:300}
     @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes slideOutRight{from{transform:translateX(0);opacity:1;max-height:80px;margin-bottom:8px}to{transform:translateX(110%);opacity:0;max-height:0;margin-bottom:0;padding:0}}
+    @keyframes checkBounce{0%{transform:scale(1)}30%{transform:scale(1.35)}60%{transform:scale(.9)}100%{transform:scale(1)}}
+    @keyframes checkFlash{0%{background:transparent}40%{background:#00c87a44}100%{background:transparent}}
+    .check-item.deleting{animation:slideOutRight .28s ease forwards;overflow:hidden;pointer-events:none}
+    .check-item.checking{animation:checkFlash .4s ease}
+    .checkbox.bouncing{animation:checkBounce .35s ease}
     /* SPLASH */
     #splash{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .5s}
     #splash h1{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:.1em;color:#fff}
@@ -577,15 +583,36 @@
   };
   window.toggleCheck=function(id){
     var c=checks.find(function(c){ return c.id===id; }); if(!c) return;
-    c.done=!c.done;
-    if(c.done){ var t=new Date(); diario.push({id:'task-'+id,checkId:id,key:todayKey,text:'✅ '+c.text,time:time12(t),tag:c.tag||''}); saveDiario(); }
-    else { diario=diario.filter(function(e){ return e.checkId!==id; }); saveDiario(); }
-    saveChecks(); renderChecks(); renderDiarioEntries(); renderCalendar(); checkConfetti();
+    var el=document.querySelector('.check-item[data-id="'+id+'"]');
+    if(el&&!c.done){
+      // animate check before moving to done
+      el.classList.add('checking');
+      var cb=el.querySelector('.checkbox'); if(cb) cb.classList.add('bouncing');
+      setTimeout(function(){
+        c.done=true;
+        var t=new Date(); diario.push({id:'task-'+id,checkId:id,key:todayKey,text:'✅ '+c.text,time:time12(t),tag:c.tag||''}); saveDiario();
+        saveChecks(); renderChecks(); renderDiarioEntries(); renderCalendar(); checkConfetti();
+      },320);
+    } else {
+      c.done=!c.done;
+      if(!c.done){ diario=diario.filter(function(e){ return e.checkId!==id; }); saveDiario(); }
+      saveChecks(); renderChecks(); renderDiarioEntries(); renderCalendar(); checkConfetti();
+    }
   };
   window.deleteCheck=function(id){
-    checks=checks.filter(function(c){ return c.id!==id; });
-    diario=diario.filter(function(e){ return e.checkId!==id; });
-    saveChecks(); saveDiario(); renderChecks(); renderDiarioEntries(); renderCalendar();
+    var el=document.querySelector('.check-item[data-id="'+id+'"]');
+    if(el){
+      el.classList.add('deleting');
+      setTimeout(function(){
+        checks=checks.filter(function(c){ return c.id!==id; });
+        diario=diario.filter(function(e){ return e.checkId!==id; });
+        saveChecks(); saveDiario(); renderChecks(); renderDiarioEntries(); renderCalendar();
+      },280);
+    } else {
+      checks=checks.filter(function(c){ return c.id!==id; });
+      diario=diario.filter(function(e){ return e.checkId!==id; });
+      saveChecks(); saveDiario(); renderChecks(); renderDiarioEntries(); renderCalendar();
+    }
   };
   window.clearDone=function(){
     var ids=checks.filter(function(c){ return c.done; }).map(function(c){ return c.id; });
