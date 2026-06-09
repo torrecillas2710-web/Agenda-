@@ -336,7 +336,7 @@
   function saveDiario(){  localStorage.setItem('ag_diario',  JSON.stringify(diario));  scheduleSync(); }
 
   var syncTimer = null;
-  var lastCloudAt = '';
+  var lastCloudAt = localStorage.getItem('ag_cloud_at') || '';
 
   function scheduleSync(){
     clearTimeout(syncTimer);
@@ -347,10 +347,20 @@
 
   function applyCloudData(data){
     if(!data || !data.updated_at) return;
-    // Skip if we already applied this exact version
     if(data.updated_at === lastCloudAt) return;
+
+    var cloudHasData = (Array.isArray(data.checks)  && data.checks.length  > 0) ||
+                       (Array.isArray(data.agendas) && data.agendas.length > 0) ||
+                       (Array.isArray(data.notas)   && data.notas.length   > 0) ||
+                       (Array.isArray(data.diario)  && data.diario.length  > 0);
+    var localHasData = checks.length > 0 || agendas.length > 0 || notas.length > 0 || diario.length > 0;
+
+    // If cloud is empty but local has data, upload local to cloud instead of wiping
+    if(!cloudHasData && localHasData){ scheduleSync(); return; }
+
     lastCloudAt = data.updated_at;
-    // Apply all arrays (including empty — to sync deletions)
+    localStorage.setItem('ag_cloud_at', lastCloudAt);
+
     if(Array.isArray(data.checks))  { checks=data.checks;   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
     if(Array.isArray(data.agendas)) { agendas=data.agendas; localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
     if(Array.isArray(data.notas))   { notas=data.notas;     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
