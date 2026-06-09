@@ -822,17 +822,20 @@
     calSwiping=false;
   },{passive:true});
 
-  // SWIPE TABS — ignores swipes that started on the calendar
-  var tsX=0, tsY=0;
+  // SWIPE TABS — ignores swipes on calendar or task items
+  var tsX=0, tsY=0, tsTarget=null;
   document.querySelector('.content').addEventListener('touchstart',function(e){
     tsX=e.touches[0].clientX;
     tsY=e.touches[0].clientY;
+    tsTarget=e.target;
   },{passive:true});
   document.querySelector('.content').addEventListener('touchend',function(e){
     if(calSwiping) return;
-    // Also ignore if touch started inside calendar
+    // Ignore if touch started inside calendar
     var calRect=calEl.getBoundingClientRect();
     if(tsX>=calRect.left&&tsX<=calRect.right&&tsY>=calRect.top&&tsY<=calRect.bottom) return;
+    // Ignore if touch started on a task item (swipe handled by task)
+    if(tsTarget&&tsTarget.closest&&tsTarget.closest('.check-item')) return;
     var dx=e.changedTouches[0].clientX-tsX, dy=e.changedTouches[0].clientY-tsY;
     if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50){
       var cur=-1; document.querySelectorAll('.tab').forEach(function(t,i){ if(t.classList.contains('active')) cur=i; });
