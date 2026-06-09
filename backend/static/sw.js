@@ -1,4 +1,4 @@
-var CACHE = 'agenda-v6';
+var CACHE = 'agenda-v7';
 var PRECACHE = ['/'];
 
 self.addEventListener('install', function(e){
@@ -18,8 +18,15 @@ self.addEventListener('activate', function(e){
 
 self.addEventListener('fetch', function(e){
   var req = e.request;
+  var url = new URL(req.url);
 
-  // For navigation (HTML pages): network-first, fallback to cache
+  // Never cache API calls (Supabase, fonts, external) — always go to network
+  if(url.origin !== self.location.origin){
+    e.respondWith(fetch(req).catch(function(){ return new Response('', {status: 503}); }));
+    return;
+  }
+
+  // For navigation (HTML): network-first, fallback to cache
   if(req.mode === 'navigate'){
     e.respondWith(
       fetch(req).then(function(res){
@@ -33,12 +40,12 @@ self.addEventListener('fetch', function(e){
     return;
   }
 
-  // For everything else: cache-first, then network (works offline)
+  // Same-origin assets: cache-first
   e.respondWith(
     caches.match(req).then(function(cached){
       if(cached) return cached;
       return fetch(req).then(function(res){
-        if(res && res.status === 200 && res.type !== 'opaque'){
+        if(res && res.status === 200){
           var clone = res.clone();
           caches.open(CACHE).then(function(c){ c.put(req, clone); });
         }
