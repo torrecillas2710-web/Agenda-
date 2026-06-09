@@ -76,10 +76,21 @@ if os.path.isdir(_static_dir):
 async def manifest():
     return FileResponse(os.path.join(_static_dir, "manifest.json"), media_type="application/manifest+json")
 
-
 @app.get("/sw.js")
 async def service_worker():
     return FileResponse(os.path.join(_static_dir, "sw.js"), media_type="application/javascript")
+
+@app.get("/icon-192.png")
+async def icon192():
+    return FileResponse(os.path.join(_static_dir, "icon-192.png"), media_type="image/png")
+
+@app.get("/icon-512.png")
+async def icon512():
+    return FileResponse(os.path.join(_static_dir, "icon-512.png"), media_type="image/png")
+
+@app.get("/apple-touch-icon.png")
+async def apple_touch_icon():
+    return FileResponse(os.path.join(_static_dir, "apple-touch-icon.png"), media_type="image/png")
 
 
 @app.get("/")
