@@ -154,6 +154,10 @@
 </head>
 <body>
 
+<div id="offline-bar" style="display:none;background:#ff6600;color:#fff;text-align:center;font-size:12px;font-weight:600;padding:6px;letter-spacing:.04em">
+  SIN CONEXIÓN — los cambios se guardan localmente y se sincronizarán al volver
+</div>
+
 <div class="topbar">
   <div class="topbar-left">
     <h1>Mi <span>Agenda</span></h1>
@@ -368,10 +372,26 @@
   }
 
   function syncNow(){
+    if(!navigator.onLine) return;
     if(window._sb) window._sb.load(function(data){ applyCloudData(data); });
   }
 
+  function updateOfflineBar(){
+    document.getElementById('offline-bar').style.display = navigator.onLine ? 'none' : 'block';
+  }
+
   function initSync(){
+    updateOfflineBar();
+    window.addEventListener('online', function(){
+      updateOfflineBar();
+      // When back online: push local data then pull from cloud
+      if(window._sb){
+        window._sb.save(checks, agendas, notas, diario);
+        setTimeout(syncNow, 1500);
+      }
+    });
+    window.addEventListener('offline', updateOfflineBar);
+
     if(!window._sb) return;
     syncNow();
     if(window._sb.listen) window._sb.listen(function(data){ applyCloudData(data); });
