@@ -545,7 +545,7 @@
   window.toggleCheck=function(id){
     var c=checks.find(function(c){ return c.id===id; }); if(!c) return;
     c.done=!c.done;
-    if(c.done){ var t=new Date(); diario.push({id:'task-'+id,checkId:id,key:todayKey,text:'✅ '+c.text,time:time12(t)}); saveDiario(); }
+    if(c.done){ var t=new Date(); diario.push({id:'task-'+id,checkId:id,key:todayKey,text:'✅ '+c.text,time:time12(t),tag:c.tag||''}); saveDiario(); }
     else { diario=diario.filter(function(e){ return e.checkId!==id; }); saveDiario(); }
     saveChecks(); renderChecks(); renderDiarioEntries(); renderCalendar();
   };
@@ -654,7 +654,9 @@
       if(e.id===editingId){
         html+='<div class="diario-entry"><div class="diario-entry-time">'+e.time+'</div><div class="edit-wrap"><textarea class="edit-area" id="edit-'+e.id+'">'+esc(e.text)+'</textarea><div class="edit-btns"><button class="edit-save" onclick="saveDiarioEdit(\''+e.id+'\')">Guardar</button><button class="edit-cancel" onclick="cancelDiarioEdit()">Cancelar</button></div></div></div>';
       } else {
-        html+='<div class="diario-entry"><div class="diario-entry-time">'+e.time+'</div><div class="diario-entry-text">'+esc(e.text)+'</div><div class="entry-actions"><button class="edit-btn" onclick="startDiarioEdit(\''+e.id+'\')">✏️</button><button class="delete-btn" onclick="deleteDiarioEntry(\''+e.id+'\')">✕</button></div></div>';
+        var tg=e.tag?TAGS.find(function(x){return x.id===e.tag;}):null;
+        var pill=tg?'<span class="tag-pill" style="background:'+tg.color+'22;color:'+tg.color+'">'+tg.label+'</span>':'';
+        html+='<div class="diario-entry"><div class="diario-entry-time">'+e.time+'</div><div class="diario-entry-text">'+pill+esc(e.text)+'</div><div class="entry-actions"><button class="edit-btn" onclick="startDiarioEdit(\''+e.id+'\')">✏️</button><button class="delete-btn" onclick="deleteDiarioEntry(\''+e.id+'\')">✕</button></div></div>';
       }
     });
     el.innerHTML=html||'<div class="no-entries">Sin entradas — escribe algo arriba ✍️</div>';
