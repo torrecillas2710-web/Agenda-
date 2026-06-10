@@ -1,18 +1,20 @@
 """
-Generates YouTube video scripts for the personal finance niche using Claude.
+Generates YouTube video scripts for the personal finance niche using Google Gemini (free).
 Each script is ~1,400 words (10 minutes at 140 wpm) with hooks, sections, and CTAs.
 """
 
-import anthropic
 import json
 import os
+import re
 from pathlib import Path
+import google.generativeai as genai
 from config import (
-    ANTHROPIC_API_KEY, CHANNEL_NAME, TARGET_AUDIENCE,
+    GEMINI_API_KEY, CHANNEL_NAME, TARGET_AUDIENCE,
     TARGET_VIDEO_MINUTES, WORDS_PER_MINUTE, SCRIPTS_DIR
 )
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 SYSTEM_PROMPT = f"""You are a professional YouTube scriptwriter for the channel "{CHANNEL_NAME}".
 You write engaging, fact-based personal finance scripts for {TARGET_AUDIENCE}.
@@ -30,9 +32,9 @@ Script rules:
 
 
 def generate_script(topic: dict) -> str:
-    """Generate a full video script for a given topic dict."""
-    prompt = f"""Write a complete YouTube script on this topic:
+    prompt = f"""{SYSTEM_PROMPT}
 
+Write a complete YouTube script on this topic:
 Title: {topic['title']}
 Opening hook: "{topic['hook']}"
 Target keywords: {', '.join(topic['keywords'])}
@@ -40,17 +42,11 @@ Call to action: {topic['cta']}
 
 Write the full narration script now. Start immediately with the hook."""
 
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return message.content[0].text
+    response = model.generate_content(prompt)
+    return response.text
 
 
 def generate_title_and_description(topic: dict, script: str) -> dict:
-    """Generate optimized YouTube title, description, and tags."""
     prompt = f"""Based on this personal finance video script, create:
 1. An optimized YouTube title (max 60 chars, clickbait but honest)
 2. A YouTube description (150-200 words, includes keywords, timestamps, and affiliate disclaimer)
@@ -59,25 +55,23 @@ def generate_title_and_description(topic: dict, script: str) -> dict:
 Topic: {topic['title']}
 Keywords: {', '.join(topic['keywords'])}
 
-Return as JSON with keys: title, description, tags (array)"""
+Return ONLY valid JSON with keys: title, description, tags (array). No extra text."""
 
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    text = message.content[0].text
-    # Extract JSON from response
+    response = model.generate_content(prompt)
+    text = response.text.strip()
+    # Remove markdown code blocks if present
+    text = re.sub(r"```json|```", "", text).strip()
     start = text.find("{")
     end = text.rfind("}") + 1
-    return json.loads(text[start:end])
+    try:
+        return json.loads(text[start:end])
+    except Exception:
+        return {"title": topic["title"], "description": "", "tags": topic["keywords"]}
 
 
 def save_script(topic: dict, script: str, metadata: dict) -> str:
-    """Save script and metadata to disk. Returns the file path."""
     Path(SCRIPTS_DIR).mkdir(exist_ok=True)
-    slug = topic["title"].lower().replace(" ", "_")[:50].replace("(", "").replace(")", "")
+    slug = re.sub(r"[^a-z0-9_]", "", topic["title"].lower().replace(" ", "_"))[:50]
     filepath = f"{SCRIPTS_DIR}/{slug}.json"
 
     data = {
@@ -96,7 +90,6 @@ def save_script(topic: dict, script: str, metadata: dict) -> str:
 
 
 def run_batch(topics_file: str = "topics.json", limit: int = 3):
-    """Generate scripts for the first `limit` topics."""
     with open(topics_file) as f:
         topics = json.load(f)
 
