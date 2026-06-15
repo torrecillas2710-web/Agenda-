@@ -311,6 +311,7 @@
         <div class="diario-day-label" id="diario-day-date"></div>
       </div>
       <textarea id="diario-input" placeholder="¿Qué hiciste este día? Escribe lo que quieras recordar..."></textarea>
+      <div class="tag-selector" id="diario-tag-selector" style="margin-bottom:10px"></div>
       <button class="full-btn" onclick="addDiarioActive()">+ Guardar en el diario</button>
       <div class="diario-entries" id="diario-entries"></div>
     </div>
@@ -495,6 +496,7 @@
   ];
   var selectedTag='';
   var filterTag='';
+  var selectedDiarioTag='';
 
   function initTagSelector(){
     var wrap=document.getElementById('tag-selector');
@@ -504,6 +506,17 @@
       }).join('')+
       '<div class="tag-opt'+(selectedTag===''?' selected':'')+'" style="background:var(--border);border:1px solid var(--muted)" title="Sin etiqueta" onclick="selectTag(\'\')"></div>';
   }
+
+  function initDiarioTagSelector(){
+    var wrap=document.getElementById('diario-tag-selector');
+    if(!wrap) return;
+    wrap.innerHTML='<span style="font-size:11px;color:var(--muted);align-self:center;margin-right:2px">Etiqueta:</span>'+
+      TAGS.map(function(t){
+        return '<div class="tag-opt'+(selectedDiarioTag===t.id?' selected':'')+'" style="background:'+t.color+'" title="'+t.label+'" onclick="selectDiarioTag(\''+t.id+'\')"></div>';
+      }).join('')+
+      '<div class="tag-opt'+(selectedDiarioTag===''?' selected':'')+'" style="background:var(--border);border:1px solid var(--muted)" title="Sin etiqueta" onclick="selectDiarioTag(\'\')"></div>';
+  }
+  window.selectDiarioTag=function(id){ selectedDiarioTag=id; initDiarioTagSelector(); };
 
   function renderTagFilters(){
     var used={};
@@ -751,8 +764,8 @@
   window.addDiarioActive=function(){
     var inp=document.getElementById('diario-input'); if(!inp.value.trim()) return;
     var t=new Date();
-    diario.push({id:''+Date.now(),key:activeDay,text:inp.value.trim(),time:time12(t)});
-    saveDiario(); inp.value=''; renderDiarioEntries(); renderCalendar();
+    diario.push({id:''+Date.now(),key:activeDay,text:inp.value.trim(),time:time12(t),tag:selectedDiarioTag||''});
+    saveDiario(); inp.value=''; selectedDiarioTag=''; initDiarioTagSelector(); renderDiarioEntries(); renderCalendar();
   };
   window.deleteDiarioEntry=function(id){ diario=diario.filter(function(e){ return e.id!==id; }); saveDiario(); renderDiarioEntries(); renderCalendar(); };
   window.startDiarioEdit=function(id){ editingId=id; renderDiarioEntries(); setTimeout(function(){ var t=document.getElementById('edit-'+id); if(t){ t.focus(); t.setSelectionRange(t.value.length,t.value.length); } },30); };
@@ -1054,7 +1067,7 @@
   }
 
   // INIT
-  initTagSelector();
+  initTagSelector(); initDiarioTagSelector();
   renderChecks(); renderAgendas(); renderNotas();
   setActiveDay(todayKey); renderCalendar();
   initSearch(); doSearch();
