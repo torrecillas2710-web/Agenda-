@@ -379,7 +379,9 @@
   function scheduleSync(){
     clearTimeout(syncTimer);
     syncTimer = setTimeout(function(){
-      if(window._sb) window._sb.save(checks, agendas, notas, diario);
+      if(window._sb) window._sb.save(checks, agendas, notas, diario, function(newAt){
+        if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); }
+      });
     }, 300);
   }
 
@@ -429,7 +431,7 @@
     if(!window._sb) return;
     syncNow();
     if(window._sb.listen) window._sb.listen(function(data){ applyCloudData(data); });
-    setInterval(syncNow, 3000);
+    setInterval(syncNow, 1500);
     document.addEventListener('visibilitychange', function(){ if(!document.hidden) syncNow(); });
     window.addEventListener('focus', syncNow);
   }
@@ -1091,7 +1093,7 @@
     );
 
     window._sb = {
-      save: function(checks, agendas, notas, diario){
+      save: function(checks, agendas, notas, diario, cb){
         supabase.from('agenda').upsert({
           id: 'datos',
           checks: checks,
@@ -1099,9 +1101,9 @@
           notas: notas,
           diario: diario,
           updated_at: new Date().toISOString()
-        }).then(function(res){
+        }).select('updated_at').single().then(function(res){
           if(res.error) console.warn('SB save error:', res.error.message);
-          else console.log('SB saved OK');
+          else { console.log('SB saved OK'); if(cb && res.data) cb(res.data.updated_at); }
         });
       },
       load: function(cb){
