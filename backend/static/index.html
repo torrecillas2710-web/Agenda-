@@ -375,9 +375,11 @@
 
   var syncTimer = null;
   var isSaving = false;
+  var localDirtyAt = 0; // ms timestamp of last local change
   var lastCloudAt = localStorage.getItem('ag_cloud_at') || '';
 
   function scheduleSync(){
+    localDirtyAt = Date.now();
     clearTimeout(syncTimer);
     syncTimer = setTimeout(function(){
       if(!window._sb) return;
@@ -385,6 +387,7 @@
       window._sb.save(checks, agendas, notas, diario, function(newAt){
         if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); }
         isSaving = false;
+        localDirtyAt = 0;
       });
     }, 300);
   }
@@ -392,7 +395,7 @@
   function applyCloudData(data){
     if(!data || !data.updated_at) return;
     if(data.updated_at === lastCloudAt) return;
-    if(isSaving) return; // Don't overwrite while we're mid-save
+    if(isSaving) return;
 
     var cloudHasData = (Array.isArray(data.checks)  && data.checks.length  > 0) ||
                        (Array.isArray(data.agendas) && data.agendas.length > 0) ||
@@ -400,7 +403,6 @@
                        (Array.isArray(data.diario)  && data.diario.length  > 0);
     var localHasData = checks.length > 0 || agendas.length > 0 || notas.length > 0 || diario.length > 0;
 
-    // If cloud is empty but local has data, upload local to cloud instead of wiping
     if(!cloudHasData && localHasData){ scheduleSync(); return; }
 
     lastCloudAt = data.updated_at;
@@ -425,16 +427,22 @@
     updateOfflineBar();
     window.addEventListener('online', function(){
       updateOfflineBar();
-      // When back online: push local first, update lastCloudAt, THEN allow pulls
-      if(window._sb){
-        isSaving = true;
-        window._sb.save(checks, agendas, notas, diario, function(newAt){
-          if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); }
-          isSaving = false;
-          // Now safe to pull — our data is already in cloud
-          setTimeout(syncNow, 500);
-        });
-      }
+      if(!window._sb) return;
+      // Pull first to see what cloud has
+      window._sb.load(function(data){
+        var cloudTime = (data && data.updated_at) ? new Date(data.updated_at).getTime() : 0;
+        if(localDirtyAt > cloudTime){
+          // User wrote something while offline — upload local (it's newer)
+          isSaving = true;
+          window._sb.save(checks, agendas, notas, diario, function(newAt){
+            if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); }
+            isSaving = false;
+          });
+        } else {
+          // Cloud is newer — apply it
+          applyCloudData(data);
+        }
+      });
     });
     window.addEventListener('offline', updateOfflineBar);
 
