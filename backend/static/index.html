@@ -374,13 +374,17 @@
   function saveDiario(){  localStorage.setItem('ag_diario',  JSON.stringify(diario));  scheduleSync(); }
 
   var syncTimer = null;
+  var isSaving = false;
   var lastCloudAt = localStorage.getItem('ag_cloud_at') || '';
 
   function scheduleSync(){
     clearTimeout(syncTimer);
     syncTimer = setTimeout(function(){
-      if(window._sb) window._sb.save(checks, agendas, notas, diario, function(newAt){
+      if(!window._sb) return;
+      isSaving = true;
+      window._sb.save(checks, agendas, notas, diario, function(newAt){
         if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); }
+        isSaving = false;
       });
     }, 300);
   }
@@ -388,6 +392,7 @@
   function applyCloudData(data){
     if(!data || !data.updated_at) return;
     if(data.updated_at === lastCloudAt) return;
+    if(isSaving) return; // Don't overwrite while we're mid-save
 
     var cloudHasData = (Array.isArray(data.checks)  && data.checks.length  > 0) ||
                        (Array.isArray(data.agendas) && data.agendas.length > 0) ||
@@ -408,7 +413,7 @@
   }
 
   function syncNow(){
-    if(!navigator.onLine) return;
+    if(!navigator.onLine || isSaving) return;
     if(window._sb) window._sb.load(function(data){ applyCloudData(data); });
   }
 
@@ -420,10 +425,15 @@
     updateOfflineBar();
     window.addEventListener('online', function(){
       updateOfflineBar();
-      // When back online: push local data then pull from cloud
+      // When back online: push local first, update lastCloudAt, THEN allow pulls
       if(window._sb){
-        window._sb.save(checks, agendas, notas, diario);
-        setTimeout(syncNow, 1500);
+        isSaving = true;
+        window._sb.save(checks, agendas, notas, diario, function(newAt){
+          if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); }
+          isSaving = false;
+          // Now safe to pull — our data is already in cloud
+          setTimeout(syncNow, 500);
+        });
       }
     });
     window.addEventListener('offline', updateOfflineBar);
