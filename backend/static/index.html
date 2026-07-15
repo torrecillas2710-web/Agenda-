@@ -180,6 +180,28 @@
     @keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
     /* NOTAS EXPANDIBLES */
     .note-expand-btn{background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:0;margin-top:4px;font-family:'DM Sans',sans-serif}
+    /* HÁBITOS */
+    .habito-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;transition:opacity .2s}
+    .habito-check{width:28px;height:28px;border:2px solid var(--accent);border-radius:50%;flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:background .15s}
+    .habito-check.done{background:var(--accent);border-color:var(--accent)}
+    .habito-emoji{font-size:20px;flex-shrink:0}
+    .habito-text{flex:1;font-size:14px;color:var(--text)}
+    .habito-item.done .habito-text{text-decoration:line-through;color:var(--muted)}
+    .habito-semana-dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+    /* FINANZAS */
+    .fin-mov{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+    .fin-mov:last-child{border-bottom:none}
+    .fin-mov-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+    .fin-cat-bar{height:5px;border-radius:3px;margin-top:4px;transition:width .4s}
+    /* METAS */
+    .meta-card{border-radius:14px;padding:14px;position:relative;overflow:hidden;cursor:pointer;min-height:120px;display:flex;flex-direction:column;justify-content:flex-end}
+    .meta-card-title{font-size:14px;font-weight:700;color:#fff;margin-bottom:2px;text-shadow:0 1px 4px #0007}
+    .meta-card-date{font-size:10px;color:#ffffffaa;margin-bottom:6px}
+    .meta-card-bar{height:3px;background:#ffffff33;border-radius:3px;margin-bottom:4px}
+    .meta-card-bar-fill{height:100%;border-radius:3px;background:#fff;transition:width .4s}
+    .meta-card-info{font-size:11px;color:#ffffffcc;display:flex;justify-content:space-between}
+    .meta-color-opt{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:border-color .15s,transform .15s;flex-shrink:0}
+    .meta-color-opt.selected{border-color:#fff;transform:scale(1.15)}
   </style>
 </head>
 <body>
@@ -238,6 +260,9 @@
   <div class="tab" onclick="switchTab('agenda',this)">📅 Eventos</div>
   <div class="tab" onclick="switchTab('notas',this)">📝 Notas</div>
   <div class="tab" onclick="switchTab('diario',this)">📖 Diario</div>
+  <div class="tab" onclick="switchTab('habitos',this)">🔥 Hábitos</div>
+  <div class="tab" onclick="switchTab('finanzas',this)">💰 Finanzas</div>
+  <div class="tab" onclick="switchTab('metas',this)">🎯 Metas</div>
   <div class="tab" onclick="switchTab('buscar',this)">🔍 Buscar</div>
 </div>
 
@@ -329,6 +354,124 @@
     </div>
   </div>
 
+  <!-- HÁBITOS -->
+  <div class="section" id="sec-habitos">
+    <div id="habitos-day-won" style="display:none;text-align:center;padding:24px 0 16px">
+      <div style="font-size:72px;font-weight:900;font-family:'Bebas Neue',sans-serif;color:var(--text);line-height:1" id="habitos-streak-num">0</div>
+      <div style="font-size:11px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase;margin-bottom:8px">DÍAS</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--accent);letter-spacing:.08em">DÍA GANADO.</div>
+      <div style="font-size:13px;color:var(--muted);font-style:italic;margin-top:4px" id="habitos-frase"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="hb-btn-hoy" class="full-btn" onclick="setHabitosView('hoy')" style="flex:1;margin-top:0">HOY</button>
+      <button id="hb-btn-semana" class="full-btn" onclick="setHabitosView('semana')" style="flex:1;margin-top:0;background:transparent;border:1.5px solid var(--accent);color:var(--accent)">SEMANA</button>
+    </div>
+    <div id="habitos-semana-grid" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="section-title">HÁBITOS</div>
+      <button onclick="showAddHabito()" style="background:none;border:none;color:var(--accent);font-size:22px;cursor:pointer;line-height:1">✏️</button>
+    </div>
+    <div id="habitos-add-form" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px">
+      <input id="habito-emoji-input" type="text" placeholder="Emoji (ej: 💧)" style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px;color:var(--text);font-size:18px;text-align:center;outline:none;margin-right:8px"/>
+      <input id="habito-text-input" type="text" placeholder="Nombre del hábito..." style="width:calc(100% - 86px);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none"/>
+      <button class="full-btn" onclick="addHabito()" style="margin-top:8px">+ Agregar hábito</button>
+    </div>
+    <div id="habitos-list"></div>
+    <div style="margin-top:14px;text-align:center;font-size:12px;color:var(--muted)" id="habitos-medal-label"></div>
+  </div>
+
+  <!-- FINANZAS -->
+  <div class="section" id="sec-finanzas">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div class="section-title">FINANZAS</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="cal-nav" onclick="finMesAnterior()">&#8249;</button>
+          <span id="fin-mes-label" style="font-size:13px;font-weight:600;color:var(--text);min-width:80px;text-align:center"></span>
+          <button class="cal-nav" onclick="finMesSiguiente()">&#8250;</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:var(--surface);border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Ingresos</div>
+          <div style="font-size:15px;font-weight:700;color:#00c87a" id="fin-ingresos">$0.00</div>
+        </div>
+        <div style="background:var(--surface);border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Gastos</div>
+          <div style="font-size:15px;font-weight:700;color:#ff4444" id="fin-gastos">$0.00</div>
+        </div>
+        <div style="background:var(--surface);border-radius:10px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Saldo</div>
+          <div style="font-size:15px;font-weight:700;color:var(--accent)" id="fin-saldo">$0.00</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="full-btn" onclick="showFinModal('gasto')" style="flex:1;margin-top:0;background:#ff444422;border:1px solid #ff4444;color:#ff4444">− Gasto</button>
+        <button class="full-btn" onclick="showFinModal('ingreso')" style="flex:1;margin-top:0;background:#00c87a22;border:1px solid #00c87a;color:#00c87a">+ Ingreso</button>
+      </div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">GASTOS POR CATEGORÍA</div>
+      <div id="fin-cats"></div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">MOVIMIENTOS</div>
+      <div id="fin-movimientos"></div>
+    </div>
+  </div>
+  <!-- FINANZAS MODAL -->
+  <div id="fin-modal" style="display:none;position:fixed;inset:0;background:#000000cc;z-index:999;align-items:flex-end;justify-content:center">
+    <div style="background:var(--card);border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:500px">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.06em;color:var(--accent);margin-bottom:16px" id="fin-modal-title">Nuevo gasto</div>
+      <input id="fin-desc" type="text" placeholder="Descripción..." style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;margin-bottom:8px;display:block"/>
+      <input id="fin-monto" type="number" placeholder="Monto..." step="0.01" min="0" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;margin-bottom:8px;display:block"/>
+      <select id="fin-cat" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;outline:none;margin-bottom:16px;display:block">
+        <option value="Alimentación">🍔 Alimentación</option>
+        <option value="Transporte">🚌 Transporte</option>
+        <option value="Ocio">🎮 Ocio</option>
+        <option value="Salud">💊 Salud</option>
+        <option value="Ropa">👕 Ropa</option>
+        <option value="Hogar">🏠 Hogar</option>
+        <option value="Educación">📚 Educación</option>
+        <option value="Otro">📦 Otro</option>
+      </select>
+      <div style="display:flex;gap:8px">
+        <button class="edit-cancel" onclick="hideFinModal()" style="flex:1">Cancelar</button>
+        <button class="edit-save" onclick="saveFinMovimiento()" style="flex:1">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- METAS -->
+  <div class="section" id="sec-metas">
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button id="meta-btn-activas" class="full-btn" onclick="setMetasView('activas')" style="flex:1;margin-top:0">ACTIVAS</button>
+      <button id="meta-btn-archivadas" class="full-btn" onclick="setMetasView('archivadas')" style="flex:1;margin-top:0;background:transparent;border:1.5px solid var(--accent);color:var(--accent)">ARCHIVADAS</button>
+    </div>
+    <button class="full-btn" onclick="showAddMeta()" style="margin-bottom:14px">+ Nueva Meta</button>
+    <div id="metas-add-form" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px">
+      <input id="meta-nombre" type="text" placeholder="Nombre de la meta..." style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:14px;outline:none;margin-bottom:8px;display:block"/>
+      <input id="meta-fecha" type="date" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:14px;outline:none;margin-bottom:8px;display:block"/>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input id="meta-progreso" type="number" placeholder="Progreso actual" min="0" step="any" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:14px;outline:none"/>
+        <input id="meta-total" type="number" placeholder="Total" min="0" step="any" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:14px;outline:none"/>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap" id="meta-color-picker">
+        <div class="meta-color-opt" data-c="#007fff" style="background:#007fff"></div>
+        <div class="meta-color-opt" data-c="#a050ff" style="background:#a050ff"></div>
+        <div class="meta-color-opt" data-c="#ff4444" style="background:#ff4444"></div>
+        <div class="meta-color-opt" data-c="#00c87a" style="background:#00c87a"></div>
+        <div class="meta-color-opt" data-c="#ff9500" style="background:#ff9500"></div>
+        <div class="meta-color-opt" data-c="#ff2d55" style="background:#ff2d55"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="edit-cancel" onclick="hideAddMeta()">Cancelar</button>
+        <button class="edit-save" onclick="saveMeta()">Guardar</button>
+      </div>
+    </div>
+    <div id="metas-list" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
+  </div>
+
   <!-- BUSCAR -->
   <div class="section" id="sec-buscar">
     <div class="input-row" style="margin-bottom:8px">
@@ -361,7 +504,26 @@
   var calYear=now.getFullYear(), calMonth=now.getMonth();
   var activeDay=todayKey, editingId=null, editingEventId=null, editingNotaId=null;
   var isLight = localStorage.getItem('ag_theme') === 'light';
-  var tabOrder=['checklist','agenda','notas','diario','buscar'];
+
+  // HÁBITOS STATE
+  var habitos = JSON.parse(localStorage.getItem('ag_habitos') || '[]');
+  var habitosDone = JSON.parse(localStorage.getItem('ag_habitos_done') || '{}');
+  var habitoStreak = parseInt(localStorage.getItem('ag_habito_streak') || '0');
+  var habitoLastDay = localStorage.getItem('ag_habito_lastday') || '';
+  var habitosView = 'hoy';
+  var FRASES = ['Difícil es el precio. ¿Lo pagas o huyes?','La disciplina es elegir entre lo que quieres ahora y lo que quieres más.','Un día más. Una victoria más.','El éxito es la suma de pequeños esfuerzos repetidos.','No hay atajos. Solo el trabajo.'];
+  var MEDALS = [{days:3,label:'🥉 STARTER',next:7},{days:7,label:'🥈 SEMANA',next:14},{days:14,label:'🥇 QUINCENAL',next:30},{days:30,label:'🏆 MENSUAL',next:60},{days:60,label:'💎 ÉLITE',next:null}];
+
+  // FINANZAS STATE
+  var finanzas = JSON.parse(localStorage.getItem('ag_finanzas') || '[]');
+  var finMesActivo = new Date();
+  var finModalTipo = 'gasto';
+
+  // METAS STATE
+  var metas = JSON.parse(localStorage.getItem('ag_metas') || '[]');
+  var metasView = 'activas';
+  var metaColorSel = '#007fff';
+  var tabOrder=['checklist','agenda','notas','diario','habitos','finanzas','metas','buscar'];
   var searchFilters={tareas:true,eventos:true,notas:true,diario:true};
 
   // Apply saved theme
@@ -498,12 +660,18 @@
         newSection.style.opacity='1';
         if(name==='diario'){ renderDiarioEntries(); renderCalendar(); }
         if(name==='buscar'){ document.getElementById('search-input').value=''; doSearch(); }
+        if(name==='habitos') renderHabitos();
+        if(name==='finanzas') renderFinanzas();
+        if(name==='metas') renderMetas();
       },200);
     } else {
       sections.forEach(function(s){ s.classList.remove('active'); });
       newSection.classList.add('active');
       if(name==='diario'){ renderDiarioEntries(); renderCalendar(); }
       if(name==='buscar'){ document.getElementById('search-input').value=''; doSearch(); }
+      if(name==='habitos') renderHabitos();
+      if(name==='finanzas') renderFinanzas();
+      if(name==='metas') renderMetas();
     }
   };
 
@@ -1086,11 +1254,258 @@
     if(done<total) confettiShown=false;
   }
 
+  // ===================== HÁBITOS =====================
+  function saveHabitos(){ localStorage.setItem('ag_habitos',JSON.stringify(habitos)); localStorage.setItem('ag_habitos_done',JSON.stringify(habitosDone)); localStorage.setItem('ag_habito_streak',habitoStreak); localStorage.setItem('ag_habito_lastday',habitoLastDay); }
+
+  function getHabitosDoneToday(){ return habitosDone[todayKey] || []; }
+
+  function updateStreak(){
+    var yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+    var yk = yesterday.getFullYear()+'-'+pad(yesterday.getMonth()+1)+'-'+pad(yesterday.getDate());
+    if(habitoLastDay === todayKey) return;
+    if(habitoLastDay === yk){ habitoStreak++; } else if(habitoLastDay !== '' && habitoLastDay !== todayKey){ habitoStreak=1; } else { habitoStreak=1; }
+    habitoLastDay = todayKey;
+    saveHabitos();
+  }
+
+  function renderHabitos(){
+    var done = getHabitosDoneToday();
+    var allDone = habitos.length > 0 && done.length >= habitos.length;
+    var dayWon = document.getElementById('habitos-day-won');
+    dayWon.style.display = allDone ? 'block' : 'none';
+    if(allDone){
+      document.getElementById('habitos-streak-num').textContent = habitoStreak;
+      document.getElementById('habitos-frase').textContent = '"'+FRASES[habitoStreak % FRASES.length]+'"';
+    }
+    if(habitosView === 'semana'){ renderHabitosSemana(); return; }
+    var list = document.getElementById('habitos-list');
+    if(!habitos.length){ list.innerHTML='<div class="empty"><div class="empty-icon">🎯</div><p>Agrega tu primer hábito</p></div>'; return; }
+    list.innerHTML = habitos.map(function(h){
+      var isDone = done.indexOf(h.id) !== -1;
+      return '<div class="habito-item'+(isDone?' done':'')+'" data-id="'+h.id+'">'
+        +'<div class="habito-check'+(isDone?' done':'')+'" onclick="toggleHabito(\''+h.id+'\')">'+(isDone?'✓':'')+'</div>'
+        +'<div class="habito-emoji">'+h.emoji+'</div>'
+        +'<div class="habito-text">'+esc(h.text)+'</div>'
+        +'<button onclick="deleteHabito(\''+h.id+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">✕</button>'
+        +'</div>';
+    }).join('');
+    // medal
+    var medal = null;
+    for(var i=MEDALS.length-1;i>=0;i--){ if(habitoStreak>=MEDALS[i].days){ medal=MEDALS[i]; break; } }
+    var next = MEDALS[0];
+    for(var j=0;j<MEDALS.length;j++){ if(habitoStreak<MEDALS[j].days){ next=MEDALS[j]; break; } }
+    var ml = document.getElementById('habitos-medal-label');
+    if(medal) ml.textContent = medal.label + (next.next ? ' · Próxima medalla: '+MEDALS[MEDALS.indexOf(next)>0?MEDALS.indexOf(next):0].label+' en '+(next.days-habitoStreak)+' días' : '');
+    else ml.textContent = 'Próxima medalla: '+next.label+' — faltan '+(next.days-habitoStreak)+' días';
+  }
+
+  function renderHabitosSemana(){
+    var days=7, grid=document.getElementById('habitos-semana-grid');
+    var html='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center">';
+    var DS7=['D','L','M','X','J','V','S'];
+    for(var i=6;i>=0;i--){
+      var d=new Date(); d.setDate(d.getDate()-i);
+      var k=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+      var dd=habitosDone[k]||[]; var pct=habitos.length?Math.round(dd.length/habitos.length*100):0;
+      var col=pct===100?'var(--accent)':pct>0?'#007fff55':'var(--surface)';
+      html+='<div><div class="habito-semana-dot" style="background:'+col+';margin:0 auto 4px">'+pct+'%</div><div style="font-size:9px;color:var(--muted)">'+DS7[d.getDay()]+'</div></div>';
+    }
+    html+='</div>';
+    grid.innerHTML=html;
+    document.getElementById('habitos-semana-grid').style.display='block';
+    document.getElementById('habitos-list').style.display='none';
+  }
+
+  window.setHabitosView=function(v){
+    habitosView=v;
+    document.getElementById('hb-btn-hoy').style.background=v==='hoy'?'var(--accent)':'transparent';
+    document.getElementById('hb-btn-hoy').style.color=v==='hoy'?'#000':'var(--accent)';
+    document.getElementById('hb-btn-hoy').style.border=v==='hoy'?'none':'1.5px solid var(--accent)';
+    document.getElementById('hb-btn-semana').style.background=v==='semana'?'var(--accent)':'transparent';
+    document.getElementById('hb-btn-semana').style.color=v==='semana'?'#000':'var(--accent)';
+    document.getElementById('hb-btn-semana').style.border=v==='semana'?'none':'1.5px solid var(--accent)';
+    if(v==='hoy'){ document.getElementById('habitos-semana-grid').style.display='none'; document.getElementById('habitos-list').style.display='block'; }
+    renderHabitos();
+  };
+
+  window.toggleHabito=function(id){
+    var done=getHabitosDoneToday().slice();
+    var idx=done.indexOf(id);
+    if(idx===-1){ done.push(id); } else { done.splice(idx,1); }
+    habitosDone[todayKey]=done;
+    if(done.length>=habitos.length && habitos.length>0) updateStreak();
+    saveHabitos(); renderHabitos();
+  };
+
+  window.showAddHabito=function(){
+    var f=document.getElementById('habitos-add-form');
+    f.style.display=f.style.display==='none'?'block':'none';
+  };
+
+  window.addHabito=function(){
+    var e=document.getElementById('habito-emoji-input').value.trim()||'⭐';
+    var t=document.getElementById('habito-text-input').value.trim(); if(!t) return;
+    habitos.push({id:''+Date.now(),emoji:e,text:t});
+    saveHabitos();
+    document.getElementById('habito-emoji-input').value='';
+    document.getElementById('habito-text-input').value='';
+    document.getElementById('habitos-add-form').style.display='none';
+    renderHabitos();
+  };
+
+  window.deleteHabito=function(id){
+    habitos=habitos.filter(function(h){return h.id!==id;});
+    saveHabitos(); renderHabitos();
+  };
+
+  // ===================== FINANZAS =====================
+  function saveFinanzas(){ localStorage.setItem('ag_finanzas',JSON.stringify(finanzas)); }
+
+  function finMesKey(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1); }
+
+  function renderFinanzas(){
+    var mk=finMesKey(finMesActivo);
+    var movs=finanzas.filter(function(m){ return m.mes===mk; });
+    var ingresos=0,gastos=0;
+    movs.forEach(function(m){ if(m.tipo==='ingreso') ingresos+=m.monto; else gastos+=m.monto; });
+    var saldo=ingresos-gastos;
+    document.getElementById('fin-mes-label').textContent=MO[finMesActivo.getMonth()]+' '+finMesActivo.getFullYear();
+    document.getElementById('fin-ingresos').textContent='$'+ingresos.toFixed(2);
+    document.getElementById('fin-gastos').textContent='$'+gastos.toFixed(2);
+    document.getElementById('fin-saldo').textContent='$'+saldo.toFixed(2);
+    document.getElementById('fin-saldo').style.color=saldo>=0?'var(--accent)':'#ff4444';
+    // cats
+    var cats={};
+    movs.filter(function(m){return m.tipo==='gasto';}).forEach(function(m){ cats[m.cat]=(cats[m.cat]||0)+m.monto; });
+    var maxCat=Math.max.apply(null,Object.values(cats).concat([1]));
+    var catsEl=document.getElementById('fin-cats');
+    var catKeys=Object.keys(cats).sort(function(a,b){return cats[b]-cats[a];});
+    if(!catKeys.length){ catsEl.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:8px">Sin gastos este mes</div>'; }
+    else { catsEl.innerHTML=catKeys.map(function(c){ return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px"><span>'+c+'</span><span style="color:var(--muted)">$'+cats[c].toFixed(2)+'</span></div><div style="height:5px;background:var(--surface);border-radius:3px"><div style="height:100%;background:var(--accent);border-radius:3px;width:'+Math.round(cats[c]/maxCat*100)+'%"></div></div></div>'; }).join(''); }
+    // movimientos
+    var movEl=document.getElementById('fin-movimientos');
+    var sorted=movs.slice().sort(function(a,b){return b.fecha.localeCompare(a.fecha);});
+    if(!sorted.length){ movEl.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:8px">Sin movimientos</div>'; return; }
+    var lastDate='', html='';
+    sorted.forEach(function(m){
+      if(m.fecha!==lastDate){ lastDate=m.fecha; html+='<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:8px 0 4px">'+m.fecha+'</div>'; }
+      var col=m.tipo==='ingreso'?'#00c87a':'#ff4444';
+      var sign=m.tipo==='ingreso'?'+':'-';
+      html+='<div class="fin-mov"><div class="fin-mov-icon" style="background:'+col+'22;color:'+col+'">'+catEmoji(m.cat)+'</div><div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--text)">'+esc(m.desc)+'</div><div style="font-size:11px;color:var(--muted)">'+m.cat+'</div></div><div style="font-weight:700;color:'+col+'">'+sign+'$'+m.monto.toFixed(2)+'</div><button onclick="deleteFinMovimiento(\''+m.id+'\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;margin-left:6px">🗑</button></div>';
+    });
+    movEl.innerHTML=html;
+  }
+
+  function catEmoji(cat){
+    var map={'Alimentación':'🍔','Transporte':'🚌','Ocio':'🎮','Salud':'💊','Ropa':'👕','Hogar':'🏠','Educación':'📚','Otro':'📦','Ingreso':'💵'};
+    return map[cat]||'📦';
+  }
+
+  window.finMesAnterior=function(){ finMesActivo=new Date(finMesActivo.getFullYear(),finMesActivo.getMonth()-1,1); renderFinanzas(); };
+  window.finMesSiguiente=function(){ finMesActivo=new Date(finMesActivo.getFullYear(),finMesActivo.getMonth()+1,1); renderFinanzas(); };
+
+  window.showFinModal=function(tipo){
+    finModalTipo=tipo;
+    document.getElementById('fin-modal-title').textContent=tipo==='gasto'?'Nuevo gasto':'Nuevo ingreso';
+    document.getElementById('fin-cat').style.display=tipo==='gasto'?'block':'none';
+    document.getElementById('fin-desc').value=''; document.getElementById('fin-monto').value='';
+    var m=document.getElementById('fin-modal'); m.style.display='flex';
+  };
+  window.hideFinModal=function(){ document.getElementById('fin-modal').style.display='none'; };
+  window.saveFinMovimiento=function(){
+    var desc=document.getElementById('fin-desc').value.trim();
+    var monto=parseFloat(document.getElementById('fin-monto').value);
+    if(!desc||isNaN(monto)||monto<=0){ alert('Pon descripción y monto'); return; }
+    var cat=finModalTipo==='ingreso'?'Ingreso':document.getElementById('fin-cat').value;
+    var mk=finMesKey(finMesActivo);
+    finanzas.push({id:''+Date.now(),tipo:finModalTipo,desc:desc,monto:monto,cat:cat,mes:mk,fecha:todayKey});
+    saveFinanzas(); hideFinModal(); renderFinanzas();
+  };
+  window.deleteFinMovimiento=function(id){ finanzas=finanzas.filter(function(m){return m.id!==id;}); saveFinanzas(); renderFinanzas(); };
+
+  // ===================== METAS =====================
+  function saveMetas(){ localStorage.setItem('ag_metas',JSON.stringify(metas)); }
+
+  function renderMetas(){
+    var view=metasView;
+    var list=metas.filter(function(m){ return view==='activas'?!m.archivada:m.archivada; });
+    var el=document.getElementById('metas-list');
+    if(!list.length){ el.innerHTML='<div style="grid-column:span 2;text-align:center;padding:32px 0;color:var(--muted);font-size:13px">'+(view==='activas'?'Sin metas activas. ¡Crea una!':'Sin metas archivadas.')+'</div>'; return; }
+    el.innerHTML=list.map(function(m){
+      var pct=m.total>0?Math.min(100,Math.round(m.progreso/m.total*100)):0;
+      var dias=m.fecha?Math.max(0,Math.ceil((new Date(m.fecha)-new Date())/86400000)):-1;
+      return '<div class="meta-card" style="background:'+m.color+';box-shadow:0 4px 20px '+m.color+'44">'
+        +'<div class="meta-card-title">'+esc(m.nombre)+'</div>'
+        +(m.fecha?'<div class="meta-card-date">📅 hasta '+m.fecha+(dias>=0?' · Faltan '+dias+' días':'')+'</div>':'')
+        +(m.total>0?'<div class="meta-card-bar"><div class="meta-card-bar-fill" style="width:'+pct+'%"></div></div>':'')
+        +'<div class="meta-card-info">'+(m.total>0?'<span>$'+m.progreso+' / $'+m.total+'</span><span>'+pct+'%</span>':'<span></span>')+'</div>'
+        +'<div style="display:flex;gap:6px;margin-top:8px">'
+        +(m.total>0?'<button onclick="updateMetaProgreso(\''+m.id+'\')" style="flex:1;background:#ffffff33;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;padding:6px;cursor:pointer;font-family:\'DM Sans\',sans-serif">Actualizar</button>':'')
+        +'<button onclick="archivarMeta(\''+m.id+'\')" style="flex:1;background:#ffffff22;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;padding:6px;cursor:pointer;font-family:\'DM Sans\',sans-serif">'+(m.archivada?'Restaurar':'Archivar')+'</button>'
+        +'<button onclick="deleteMeta(\''+m.id+'\')" style="background:#ff000033;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;padding:6px 8px;cursor:pointer;font-family:\'DM Sans\',sans-serif">✕</button>'
+        +'</div></div>';
+    }).join('');
+  }
+
+  window.setMetasView=function(v){
+    metasView=v;
+    document.getElementById('meta-btn-activas').style.background=v==='activas'?'var(--accent)':'transparent';
+    document.getElementById('meta-btn-activas').style.color=v==='activas'?'#000':'var(--accent)';
+    document.getElementById('meta-btn-activas').style.border=v==='activas'?'none':'1.5px solid var(--accent)';
+    document.getElementById('meta-btn-archivadas').style.background=v==='archivadas'?'var(--accent)':'transparent';
+    document.getElementById('meta-btn-archivadas').style.color=v==='archivadas'?'#000':'var(--accent)';
+    document.getElementById('meta-btn-archivadas').style.border=v==='archivadas'?'none':'1.5px solid var(--accent)';
+    renderMetas();
+  };
+
+  window.showAddMeta=function(){
+    var f=document.getElementById('metas-add-form');
+    f.style.display=f.style.display==='none'?'block':'none';
+    if(f.style.display==='block') initMetaColorPicker();
+  };
+  window.hideAddMeta=function(){ document.getElementById('metas-add-form').style.display='none'; };
+
+  function initMetaColorPicker(){
+    var opts=document.querySelectorAll('.meta-color-opt');
+    opts.forEach(function(o){
+      o.classList.toggle('selected', o.getAttribute('data-c')===metaColorSel);
+      o.onclick=function(){ metaColorSel=this.getAttribute('data-c'); initMetaColorPicker(); };
+    });
+  }
+
+  window.saveMeta=function(){
+    var nombre=document.getElementById('meta-nombre').value.trim();
+    var fecha=document.getElementById('meta-fecha').value;
+    var progreso=parseFloat(document.getElementById('meta-progreso').value)||0;
+    var total=parseFloat(document.getElementById('meta-total').value)||0;
+    if(!nombre){ alert('Ponle nombre a la meta'); return; }
+    metas.push({id:''+Date.now(),nombre:nombre,fecha:fecha,progreso:progreso,total:total,color:metaColorSel,archivada:false});
+    saveMetas();
+    document.getElementById('meta-nombre').value='';
+    document.getElementById('meta-fecha').value='';
+    document.getElementById('meta-progreso').value='';
+    document.getElementById('meta-total').value='';
+    document.getElementById('metas-add-form').style.display='none';
+    renderMetas();
+  };
+
+  window.archivarMeta=function(id){ var m=metas.find(function(x){return x.id===id;}); if(m) m.archivada=!m.archivada; saveMetas(); renderMetas(); };
+  window.deleteMeta=function(id){ metas=metas.filter(function(m){return m.id!==id;}); saveMetas(); renderMetas(); };
+  window.updateMetaProgreso=function(id){
+    var m=metas.find(function(x){return x.id===id;}); if(!m) return;
+    var v=prompt('Progreso actual (de $'+m.total+'):',m.progreso);
+    if(v===null) return;
+    var n=parseFloat(v); if(isNaN(n)||n<0) return;
+    m.progreso=n; if(n>=m.total) m.archivada=true;
+    saveMetas(); renderMetas();
+  };
+
   // INIT
   initTagSelector(); initDiarioTagSelector();
   renderChecks(); renderAgendas(); renderNotas();
   setActiveDay(todayKey); renderCalendar();
   initSearch(); doSearch();
+  renderHabitos(); renderFinanzas(); renderMetas();
 
   // Connect Supabase when ready
   if(window._sb){
