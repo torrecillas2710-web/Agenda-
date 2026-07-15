@@ -1,4 +1,4 @@
-var CACHE = 'agenda-v11';
+var CACHE = 'agenda-v12';
 var PRECACHE = ['/'];
 
 self.addEventListener('install', function(e){
