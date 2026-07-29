@@ -1308,8 +1308,8 @@
     for(var i=6;i>=0;i--){
       var d=new Date(); d.setDate(d.getDate()-i);
       var k=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-      var dd=habitosDone[k]||[]; var pct=habitos.length?Math.round(dd.length/habitos.length*100):0;
-      var col=pct===100?'var(--accent)':pct>0?'#007fff55':'var(--surface)';
+      var dd=habitosDone[k]||[]; var validDone=dd.filter(function(id){return habitos.some(function(h){return h.id===id;});}); var pct=habitos.length?Math.min(100,Math.round(validDone.length/habitos.length*100)):0;
+      var col=pct===100?'var(--accent)':pct>=50?'#007fff88':pct>0?'#007fff44':'var(--surface)';
       html+='<div><div class="habito-semana-dot" style="background:'+col+';margin:0 auto 4px">'+pct+'%</div><div style="font-size:9px;color:var(--muted)">'+DS7[d.getDay()]+'</div></div>';
     }
     html+='</div>';
