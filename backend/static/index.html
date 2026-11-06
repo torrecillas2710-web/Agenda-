@@ -538,20 +538,91 @@
   function saveDiario(){  localStorage.setItem('ag_diario',  JSON.stringify(diario));  scheduleSync(); }
 
   var syncTimer = null;
+  var syncRetryTimer = null;
   var isSaving = false;
-  var localDirtyAt = 0; // ms timestamp of last local change
+  // OFFLINE-FIRST: la marca de cambios locales pendientes vive en localStorage
+  // (ag_dirty_at), no solo en memoria. Sin esto, al recargar sin internet se
+  // perdía y al volver online la nube sobrescribía los cambios offline.
+  // Se limpia SOLO tras un guardado exitoso en la nube.
+  var localDirtyAt = parseInt(localStorage.getItem('ag_dirty_at') || '0', 10) || 0;
   var lastCloudAt = localStorage.getItem('ag_cloud_at') || '';
+
+  function getLocalDirtyAt(){ return parseInt(localStorage.getItem('ag_dirty_at') || '0', 10) || 0; }
+  function hasPendingLocalChanges(){ return getLocalDirtyAt() > 0; }
+  function clearLocalDirty(){ localDirtyAt = 0; localStorage.removeItem('ag_dirty_at'); }
+
+  // Datos extra que también se sincronizan (antes _sb.save solo subía
+  // checks, agendas, notas y diario). Compatibilidad hacia atrás: si la
+  // nube no trae estos campos, se dejan los locales como están.
+  function cloudPayload(){
+    return {
+      habitos: habitos,
+      habitos_done: habitosDone,
+      habito_streak: habitoStreak,
+      habito_lastday: habitoLastDay,
+      finanzas: finanzas,
+      metas: metas
+    };
+  }
+
+  // Fusión por id: une locales + nube sin duplicar ids. Si un id existe en
+  // ambos, gana la versión local cuando preferLocal es true (hay cambios
+  // locales pendientes) y la de la nube en caso contrario.
+  // LIMITACIÓN CONOCIDA: un borrado hecho offline en un dispositivo puede
+  // reaparecer si otro dispositivo aún tenía ese elemento, porque la fusión
+  // no distingue "borrado" de "nunca existió". Es mejor que perder datos
+  // nuevos, pero los borrados offline no se propagan como borrados.
+  function mergeById(localArr, cloudArr, preferLocal){
+    var byId = {};
+    var out = [];
+    function keyOf(it){ return (it && it.id !== undefined && it.id !== null) ? 'id:' + it.id : 'json:' + JSON.stringify(it); }
+    (Array.isArray(localArr) ? localArr : []).forEach(function(it){ var k = keyOf(it); if(!(k in byId)){ byId[k] = out.length; out.push(it); } });
+    (Array.isArray(cloudArr) ? cloudArr : []).forEach(function(it){
+      var k = keyOf(it);
+      if(k in byId){ if(!preferLocal) out[byId[k]] = it; }
+      else { byId[k] = out.length; out.push(it); }
+    });
+    return out;
+  }
+
+  // habitosDone es un objeto {fecha: [ids]}: se unen las claves y los ids
+  // de cada fecha sin duplicar.
+  function mergeDoneMap(localMap, cloudMap){
+    var out = {};
+    [localMap, cloudMap].forEach(function(m){
+      if(!m) return;
+      Object.keys(m).forEach(function(k){
+        var arr = (out[k] || []).concat(Array.isArray(m[k]) ? m[k] : []);
+        out[k] = arr.filter(function(v, i){ return arr.indexOf(v) === i; });
+      });
+    });
+    return out;
+  }
 
   function scheduleSync(){
     localDirtyAt = Date.now();
+    localStorage.setItem('ag_dirty_at', String(localDirtyAt));
     clearTimeout(syncTimer);
     syncTimer = setTimeout(function(){
-      if(!window._sb) return;
+      // Sin internet o sin cliente Supabase: reintentar en 5 s en lugar de
+      // perder el intento (antes hacía return y el cambio quedaba sin subir).
+      if(!navigator.onLine || !window._sb){
+        clearTimeout(syncRetryTimer);
+        syncRetryTimer = setTimeout(scheduleSync, 5000);
+        return;
+      }
+      clearTimeout(syncRetryTimer);
       isSaving = true;
-      window._sb.save(checks, agendas, notas, diario, function(newAt){
-        if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); }
+      window._sb.save(checks, agendas, notas, diario, cloudPayload(), function(newAt){
         isSaving = false;
-        localDirtyAt = 0;
+        if(newAt){
+          lastCloudAt = newAt; localStorage.setItem('ag_cloud_at', newAt);
+          clearLocalDirty();
+        } else {
+          // Fallo al guardar: la marca de pendiente se conserva y se reintenta.
+          clearTimeout(syncRetryTimer);
+          syncRetryTimer = setTimeout(scheduleSync, 5000);
+        }
       });
     }, 300);
   }
@@ -561,25 +632,48 @@
     if(data.updated_at === lastCloudAt) return;
     if(isSaving) return;
 
+    // Si hay cambios locales pendientes, NO aplicar la nube todavía:
+    // subir primero lo local para no perderlo.
+    if(hasPendingLocalChanges()){ scheduleSync(); return; }
+
     var cloudHasData = (Array.isArray(data.checks)  && data.checks.length  > 0) ||
                        (Array.isArray(data.agendas) && data.agendas.length > 0) ||
                        (Array.isArray(data.notas)   && data.notas.length   > 0) ||
-                       (Array.isArray(data.diario)  && data.diario.length  > 0);
-    var localHasData = checks.length > 0 || agendas.length > 0 || notas.length > 0 || diario.length > 0;
+                       (Array.isArray(data.diario)  && data.diario.length  > 0) ||
+                       (Array.isArray(data.habitos) && data.habitos.length > 0) ||
+                       (Array.isArray(data.finanzas) && data.finanzas.length > 0) ||
+                       (Array.isArray(data.metas)   && data.metas.length   > 0);
+    var localHasData = checks.length > 0 || agendas.length > 0 || notas.length > 0 || diario.length > 0 ||
+                       habitos.length > 0 || finanzas.length > 0 || metas.length > 0;
 
     if(!cloudHasData && localHasData){ scheduleSync(); return; }
 
     lastCloudAt = data.updated_at;
     localStorage.setItem('ag_cloud_at', lastCloudAt);
 
-    if(Array.isArray(data.checks))  { checks=data.checks;   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
-    if(Array.isArray(data.agendas)) { agendas=data.agendas; localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
-    if(Array.isArray(data.notas))   { notas=data.notas;     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
-    if(Array.isArray(data.diario))  { diario=data.diario;   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
+    // Fusión por id en lugar de sobrescritura total: lo local y lo de la
+    // nube se unen sin duplicar. Sin cambios locales pendientes, en caso
+    // de conflicto gana la nube (es más nueva). Los campos que la nube no
+    // trae (versiones viejas) no tocan los datos locales.
+    if(Array.isArray(data.checks))  { checks=mergeById(checks, data.checks, false);   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
+    if(Array.isArray(data.agendas)) { agendas=mergeById(agendas, data.agendas, false); localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
+    if(Array.isArray(data.notas))   { notas=mergeById(notas, data.notas, false);     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
+    if(Array.isArray(data.diario))  { diario=mergeById(diario, data.diario, false);   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
+    if(Array.isArray(data.habitos)) { habitos=mergeById(habitos, data.habitos, false); localStorage.setItem('ag_habitos',JSON.stringify(habitos)); }
+    if(data.habitos_done) { habitosDone=mergeDoneMap(habitosDone, data.habitos_done); localStorage.setItem('ag_habitos_done',JSON.stringify(habitosDone)); }
+    if(typeof data.habito_streak === 'number'){ habitoStreak=Math.max(habitoStreak, data.habito_streak); localStorage.setItem('ag_habito_streak',habitoStreak); }
+    if(typeof data.habito_lastday === 'string' && data.habito_lastday > habitoLastDay){ habitoLastDay=data.habito_lastday; localStorage.setItem('ag_habito_lastday',habitoLastDay); }
+    if(Array.isArray(data.finanzas)) { finanzas=mergeById(finanzas, data.finanzas, false); localStorage.setItem('ag_finanzas',JSON.stringify(finanzas)); }
+    if(Array.isArray(data.metas))   { metas=mergeById(metas, data.metas, false);     localStorage.setItem('ag_metas',JSON.stringify(metas)); }
+    if(Array.isArray(data.habitos) || data.habitos_done || typeof data.habito_streak === 'number') renderHabitos();
+    if(Array.isArray(data.finanzas)) renderFinanzas();
+    if(Array.isArray(data.metas)) renderMetas();
   }
 
   function syncNow(){
     if(!navigator.onLine || isSaving) return;
+    // Cambios locales pendientes: subir antes de bajar nada de la nube.
+    if(hasPendingLocalChanges()){ scheduleSync(); return; }
     if(window._sb) window._sb.load(function(data){ applyCloudData(data); });
   }
 
@@ -592,21 +686,19 @@
     window.addEventListener('online', function(){
       updateOfflineBar();
       if(!window._sb) return;
-      // Pull first to see what cloud has
-      window._sb.load(function(data){
-        var cloudTime = (data && data.updated_at) ? new Date(data.updated_at).getTime() : 0;
-        if(localDirtyAt > cloudTime){
-          // User wrote something while offline — upload local (it's newer)
-          isSaving = true;
-          window._sb.save(checks, agendas, notas, diario, function(newAt){
-            if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); }
-            isSaving = false;
-          });
-        } else {
-          // Cloud is newer — apply it
-          applyCloudData(data);
-        }
-      });
+      // Si hay cambios locales pendientes (la marca sobrevive a recargas),
+      // subirlos PRIMERO y solo después bajar/aplicar lo de la nube.
+      if(hasPendingLocalChanges()){
+        isSaving = true;
+        window._sb.save(checks, agendas, notas, diario, cloudPayload(), function(newAt){
+          isSaving = false;
+          if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); clearLocalDirty(); }
+          syncNow();
+        });
+        return;
+      }
+      // Sin cambios pendientes: bajar y fusionar lo de la nube.
+      window._sb.load(function(data){ applyCloudData(data); });
     });
     window.addEventListener('offline', updateOfflineBar);
 
@@ -1168,7 +1260,7 @@
                   if(data.notas)   { notas=data.notas;     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
                   if(data.diario)  { diario=data.diario;   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
                   // Save to Supabase immediately so it doesn't get overwritten
-                  if(window._sb) window._sb.save(checks, agendas, notas, diario);
+                  if(window._sb) window._sb.save(checks, agendas, notas, diario, cloudPayload());
                   showMsg('✅ Datos importados desde QR');
                   return;
                 }
@@ -1257,7 +1349,7 @@
   }
 
   // ===================== HÁBITOS =====================
-  function saveHabitos(){ localStorage.setItem('ag_habitos',JSON.stringify(habitos)); localStorage.setItem('ag_habitos_done',JSON.stringify(habitosDone)); localStorage.setItem('ag_habito_streak',habitoStreak); localStorage.setItem('ag_habito_lastday',habitoLastDay); }
+  function saveHabitos(){ localStorage.setItem('ag_habitos',JSON.stringify(habitos)); localStorage.setItem('ag_habitos_done',JSON.stringify(habitosDone)); localStorage.setItem('ag_habito_streak',habitoStreak); localStorage.setItem('ag_habito_lastday',habitoLastDay); scheduleSync(); }
 
   function getHabitosDoneToday(){ return habitosDone[todayKey] || []; }
 
@@ -1361,7 +1453,7 @@
   };
 
   // ===================== FINANZAS =====================
-  function saveFinanzas(){ localStorage.setItem('ag_finanzas',JSON.stringify(finanzas)); }
+  function saveFinanzas(){ localStorage.setItem('ag_finanzas',JSON.stringify(finanzas)); scheduleSync(); }
 
   function finMesKey(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1); }
 
@@ -1426,7 +1518,7 @@
   window.deleteFinMovimiento=function(id){ finanzas=finanzas.filter(function(m){return m.id!==id;}); saveFinanzas(); renderFinanzas(); };
 
   // ===================== METAS =====================
-  function saveMetas(){ localStorage.setItem('ag_metas',JSON.stringify(metas)); }
+  function saveMetas(){ localStorage.setItem('ag_metas',JSON.stringify(metas)); scheduleSync(); }
 
   function renderMetas(){
     var view=metasView;
@@ -1527,17 +1619,36 @@
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdtamx5d2tqbWJwamFsYnVucXJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NjQ5MjEsImV4cCI6MjA5NjM0MDkyMX0.uRTJ0wGsSg0P9TSyginUFML6wQkLFUQ0tohbPj5GiKI'
     );
 
+    // PENDIENTE (no hecho en este cambio): la tabla 'agenda' de Supabase
+    // no exige autenticación; cualquiera con el proyecto podría leer o
+    // escribir el documento 'datos'. Añadir auth/RLS antes de confiar
+    // en esta sincronización para datos sensibles.
     window._sb = {
-      save: function(checks, agendas, notas, diario, cb){
-        supabase.from('agenda').upsert({
+      // save(checks, agendas, notas, diario[, extra][, cb])
+      // extra (opcional) = {habitos, habitos_done, habito_streak,
+      // habito_lastday, finanzas, metas}. El 5º argumento puede ser
+      // directamente el callback (llamadas antiguas sin extra).
+      // En caso de error se llama cb(null) para no dejar isSaving
+      // bloqueado y permitir el reintento de scheduleSync.
+      save: function(checks, agendas, notas, diario, extra, cb){
+        if(typeof extra === 'function'){ cb = extra; extra = {}; }
+        extra = extra || {};
+        var row = {
           id: 'datos',
           checks: checks,
           agendas: agendas,
           notas: notas,
           diario: diario,
           updated_at: new Date().toISOString()
-        }).select('updated_at').single().then(function(res){
-          if(res.error) console.warn('SB save error:', res.error.message);
+        };
+        if(extra.habitos !== undefined) row.habitos = extra.habitos;
+        if(extra.habitos_done !== undefined) row.habitos_done = extra.habitos_done;
+        if(extra.habito_streak !== undefined) row.habito_streak = extra.habito_streak;
+        if(extra.habito_lastday !== undefined) row.habito_lastday = extra.habito_lastday;
+        if(extra.finanzas !== undefined) row.finanzas = extra.finanzas;
+        if(extra.metas !== undefined) row.metas = extra.metas;
+        supabase.from('agenda').upsert(row).select('updated_at').single().then(function(res){
+          if(res.error){ console.warn('SB save error:', res.error.message); if(cb) cb(null); }
           else { console.log('SB saved OK'); if(cb && res.data) cb(res.data.updated_at); }
         });
       },
