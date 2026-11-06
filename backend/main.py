@@ -14,7 +14,7 @@ load_dotenv()
 
 from database.database import init_db, AsyncSessionLocal
 from database.models import UserProfile
-from routers import chat, memory, tasks, profile, voice
+from routers import bridge, chat, memory, tasks, profile, voice
 
 
 @asynccontextmanager
@@ -60,6 +60,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(bridge.router)
 app.include_router(chat.router)
 app.include_router(memory.router)
 app.include_router(tasks.router)
