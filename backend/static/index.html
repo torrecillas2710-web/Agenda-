@@ -1683,16 +1683,83 @@
         if(extra.habito_lastday !== undefined) row.habito_lastday = extra.habito_lastday;
         if(extra.finanzas !== undefined) row.finanzas = extra.finanzas;
         if(extra.metas !== undefined) row.metas = extra.metas;
-        // ANTI-BORRADO (bug 2026-11-06): antes de subir, bajar la nube y
-        // comprobar que no vamos a sobrescribir datos con un documento
-        // vacío. Una instancia nueva (p. ej. el icono PWA de iOS, con su
-        // propio localStorage vacío, separado de Safari) no debe borrar
-        // la nube. Si la fila a subir está vacía en TODAS las colecciones
-        // y la nube tiene datos, NO se sube: se devuelve el updated_at de
-        // la nube para que el llamador actualice su marca, y el siguiente
-        // ciclo de sincronización fusiona la nube en local. Si la nube no
-        // existe o está vacía, se permite la subida (primer guardado).
+        // ANTI-BORRADO POR COLECCIÓN (bugs 2026-11-06):
+        // - 16:56: una instancia nueva (p. ej. el icono PWA de iOS, con
+        //   su propio localStorage vacío, separado de Safari) subió un
+        //   documento vacío y borró la nube. El arreglo de entonces solo
+        //   bloqueaba la subida si el documento estaba vacío en TODAS
+        //   las colecciones.
+        // - 17:11: SEGUNDO BORRADO: una instancia local tenía agendas=2
+        //   pero checks=[] y subió checks=[], borrando las 4 tareas de
+        //   la nube. El filtro "todo vacío" no lo frenó porque agendas
+        //   no estaba vacía.
+        // Por eso, antes de cada upsert se baja la fila actual de la
+        // nube y se FUSIONA POR COLECCIÓN con lo que se va a subir:
+        // si una colección a subir está vacía (o falta) y la nube tiene
+        // datos en esa colección, se conserva la versión de la nube
+        // para esa colección: una subida NUNCA vacía una colección de
+        // la nube. Si la colección a subir tiene datos, se fusiona por
+        // id con la nube (unión sin duplicados, preferencia local en
+        // conflicto). El filtro "todo vacío" se mantiene como respaldo.
+        // Si la nube no existe, se permite subir tal cual (primer
+        // guardado). Si la lectura de la nube falla por red, se falla
+        // con cb(null) para reintentar, en vez de arriesgar un borrado.
+        // NOTA: mergeById/mergeDoneMap viven dentro del IIFE del
+        // script principal y no son accesibles desde este bloque, por
+        // eso se duplican aquí como sbMergeById/sbMergeDoneMap con la
+        // misma lógica.
         function arrEmpty(a){ return !Array.isArray(a) || a.length === 0; }
+        function sbMergeById(localArr, cloudArr, preferLocal){
+          var byId = {};
+          var out = [];
+          function keyOf(it){ return (it && it.id !== undefined && it.id !== null) ? 'id:' + it.id : 'json:' + JSON.stringify(it); }
+          (Array.isArray(localArr) ? localArr : []).forEach(function(it){ var k = keyOf(it); if(!(k in byId)){ byId[k] = out.length; out.push(it); } });
+          (Array.isArray(cloudArr) ? cloudArr : []).forEach(function(it){
+            var k = keyOf(it);
+            if(k in byId){ if(!preferLocal) out[byId[k]] = it; }
+            else { byId[k] = out.length; out.push(it); }
+          });
+          return out;
+        }
+        function sbMergeDoneMap(localMap, cloudMap){
+          var out = {};
+          [localMap, cloudMap].forEach(function(m){
+            if(!m) return;
+            Object.keys(m).forEach(function(k){
+              var arr = (out[k] || []).concat(Array.isArray(m[k]) ? m[k] : []);
+              out[k] = arr.filter(function(v, i){ return arr.indexOf(v) === i; });
+            });
+          });
+          return out;
+        }
+        function mergeRowWithCloud(toUpload, cloud){
+          var merged = { id: toUpload.id, updated_at: toUpload.updated_at };
+          ['checks','agendas','notas','diario','habitos','finanzas','metas'].forEach(function(f){
+            if(toUpload[f] === undefined) return; // no venía en la subida: no tocar la nube
+            if(arrEmpty(toUpload[f]) && Array.isArray(cloud[f]) && cloud[f].length > 0){
+              merged[f] = cloud[f]; // subir vacío NUNCA vacía la nube
+            } else {
+              merged[f] = sbMergeById(toUpload[f], cloud[f], true);
+            }
+          });
+          if(toUpload.habitos_done !== undefined){
+            var cloudDone = cloud.habitos_done || {};
+            if(!toUpload.habitos_done || Object.keys(toUpload.habitos_done).length === 0){
+              merged.habitos_done = Object.keys(cloudDone).length > 0 ? cloudDone : toUpload.habitos_done;
+            } else {
+              merged.habitos_done = sbMergeDoneMap(toUpload.habitos_done, cloudDone);
+            }
+          }
+          if(toUpload.habito_streak !== undefined){
+            merged.habito_streak = Math.max(toUpload.habito_streak || 0, cloud.habito_streak || 0);
+          }
+          if(toUpload.habito_lastday !== undefined){
+            var localDay = toUpload.habito_lastday || '';
+            var cloudDay = cloud.habito_lastday || '';
+            merged.habito_lastday = (cloudDay > localDay) ? cloudDay : localDay;
+          }
+          return merged;
+        }
         function rowIsEmpty(r){
           return arrEmpty(r.checks) && arrEmpty(r.agendas) && arrEmpty(r.notas) && arrEmpty(r.diario) &&
                  arrEmpty(r.habitos) && arrEmpty(r.finanzas) && arrEmpty(r.metas) &&
@@ -1715,8 +1782,12 @@
             else { console.warn('SB save guard load error:', res.error.message); if(cb) cb(null); }
             return;
           }
+          // Fusión por colección con la nube antes de subir (protección
+          // principal). Respaldo: si tras fusionar el documento siguiera
+          // vacío y la nube tuviera datos, no subir nada.
+          row = mergeRowWithCloud(row, res.data);
           if(rowIsEmpty(row) && !rowIsEmpty(res.data)){
-            console.warn('SB save bloqueado: documento local vacío y la nube tiene datos; no se sube nada vacío.');
+            console.warn('SB save bloqueado: tras fusionar, el documento sigue vacío y la nube tiene datos; no se sube nada vacío.');
             if(cb) cb(res.data.updated_at);
             return;
           }
