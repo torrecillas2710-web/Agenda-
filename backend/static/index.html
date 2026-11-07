@@ -599,6 +599,31 @@
     return out;
   }
 
+  // ¿El documento local está vacío en TODAS las colecciones? Una
+  // instancia nueva (p. ej. el icono PWA de iOS, que tiene su propio
+  // localStorage vacío, separado de Safari) empieza así: no es que el
+  // usuario haya borrado todo, es que nunca tuvo datos.
+  function localDocIsEmpty(){
+    return checks.length === 0 && agendas.length === 0 && notas.length === 0 && diario.length === 0 &&
+           habitos.length === 0 && finanzas.length === 0 && metas.length === 0 &&
+           Object.keys(habitosDone || {}).length === 0 && !habitoStreak && !habitoLastDay;
+  }
+
+  // ¿El documento de la nube trae algún dato? (data = fila de Supabase)
+  function cloudDocHasData(data){
+    if(!data) return false;
+    return (Array.isArray(data.checks)  && data.checks.length  > 0) ||
+           (Array.isArray(data.agendas) && data.agendas.length > 0) ||
+           (Array.isArray(data.notas)   && data.notas.length   > 0) ||
+           (Array.isArray(data.diario)  && data.diario.length  > 0) ||
+           (Array.isArray(data.habitos) && data.habitos.length > 0) ||
+           (Array.isArray(data.finanzas) && data.finanzas.length > 0) ||
+           (Array.isArray(data.metas)   && data.metas.length   > 0) ||
+           (data.habitos_done && Object.keys(data.habitos_done).length > 0) ||
+           (typeof data.habito_streak === 'number' && data.habito_streak > 0) ||
+           (typeof data.habito_lastday === 'string' && data.habito_lastday !== '');
+  }
+
   function scheduleSync(){
     localDirtyAt = Date.now();
     localStorage.setItem('ag_dirty_at', String(localDirtyAt));
@@ -613,6 +638,8 @@
       }
       clearTimeout(syncRetryTimer);
       isSaving = true;
+      // La subida pasa por _sb.save, que antes de subir baja la nube y
+      // se niega a sobrescribir datos con un documento vacío (anti-borrado).
       window._sb.save(checks, agendas, notas, diario, cloudPayload(), function(newAt){
         isSaving = false;
         if(newAt){
@@ -629,51 +656,68 @@
 
   function applyCloudData(data){
     if(!data || !data.updated_at) return;
-    if(data.updated_at === lastCloudAt) return;
     if(isSaving) return;
 
-    // Si hay cambios locales pendientes, NO aplicar la nube todavía:
-    // subir primero lo local para no perderlo.
-    if(hasPendingLocalChanges()){ scheduleSync(); return; }
+    // REGLA ANTI-BORRADO (bug 2026-11-06): una instancia nueva — p. ej.
+    // el icono PWA de iOS, que tiene su propio localStorage vacío,
+    // separado de Safari — NUNCA debe subir un documento vacío sobre una
+    // nube con datos; eso borró las 3 tareas de la nube. Por eso aquí
+    // SIEMPRE se fusiona primero la nube en local (mergeById, con
+    // preferencia local si hay cambios pendientes) y solo después, si
+    // había cambios pendientes, se sube el resultado YA FUSIONADO, nunca
+    // el documento local tal cual. El guardado (_sb.save) tiene además
+    // su propia comprobación antes de subir.
+    var pending = hasPendingLocalChanges();
 
-    var cloudHasData = (Array.isArray(data.checks)  && data.checks.length  > 0) ||
-                       (Array.isArray(data.agendas) && data.agendas.length > 0) ||
-                       (Array.isArray(data.notas)   && data.notas.length   > 0) ||
-                       (Array.isArray(data.diario)  && data.diario.length  > 0) ||
-                       (Array.isArray(data.habitos) && data.habitos.length > 0) ||
-                       (Array.isArray(data.finanzas) && data.finanzas.length > 0) ||
-                       (Array.isArray(data.metas)   && data.metas.length   > 0);
-    var localHasData = checks.length > 0 || agendas.length > 0 || notas.length > 0 || diario.length > 0 ||
-                       habitos.length > 0 || finanzas.length > 0 || metas.length > 0;
+    if(data.updated_at === lastCloudAt){
+      // La nube no cambió desde la última vez que la vimos: si hay
+      // cambios locales pendientes, subirlos (_sb.save los protege).
+      if(pending) scheduleSync();
+      return;
+    }
 
-    if(!cloudHasData && localHasData){ scheduleSync(); return; }
+    var cloudHasData = cloudDocHasData(data);
+    // ¡Antes de fusionar! Después de la fusión local ya no está vacío.
+    var localHasData = !localDocIsEmpty();
 
     lastCloudAt = data.updated_at;
     localStorage.setItem('ag_cloud_at', lastCloudAt);
 
     // Fusión por id en lugar de sobrescritura total: lo local y lo de la
-    // nube se unen sin duplicar. Sin cambios locales pendientes, en caso
-    // de conflicto gana la nube (es más nueva). Los campos que la nube no
-    // trae (versiones viejas) no tocan los datos locales.
-    if(Array.isArray(data.checks))  { checks=mergeById(checks, data.checks, false);   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
-    if(Array.isArray(data.agendas)) { agendas=mergeById(agendas, data.agendas, false); localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
-    if(Array.isArray(data.notas))   { notas=mergeById(notas, data.notas, false);     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
-    if(Array.isArray(data.diario))  { diario=mergeById(diario, data.diario, false);   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
-    if(Array.isArray(data.habitos)) { habitos=mergeById(habitos, data.habitos, false); localStorage.setItem('ag_habitos',JSON.stringify(habitos)); }
+    // nube se unen sin duplicar. Con cambios locales pendientes, en caso
+    // de conflicto gana lo local; sin ellos, gana la nube (es más nueva).
+    // Los campos que la nube no trae (versiones viejas) no tocan los
+    // datos locales. Si local estaba vacío y la nube tenía datos, local
+    // pasa a ser la nube: nada se pierde y nada vacío se sube.
+    var preferLocal = pending;
+    if(Array.isArray(data.checks))  { checks=mergeById(checks, data.checks, preferLocal);   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
+    if(Array.isArray(data.agendas)) { agendas=mergeById(agendas, data.agendas, preferLocal); localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
+    if(Array.isArray(data.notas))   { notas=mergeById(notas, data.notas, preferLocal);     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
+    if(Array.isArray(data.diario))  { diario=mergeById(diario, data.diario, preferLocal);   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
+    if(Array.isArray(data.habitos)) { habitos=mergeById(habitos, data.habitos, preferLocal); localStorage.setItem('ag_habitos',JSON.stringify(habitos)); }
     if(data.habitos_done) { habitosDone=mergeDoneMap(habitosDone, data.habitos_done); localStorage.setItem('ag_habitos_done',JSON.stringify(habitosDone)); }
     if(typeof data.habito_streak === 'number'){ habitoStreak=Math.max(habitoStreak, data.habito_streak); localStorage.setItem('ag_habito_streak',habitoStreak); }
     if(typeof data.habito_lastday === 'string' && data.habito_lastday > habitoLastDay){ habitoLastDay=data.habito_lastday; localStorage.setItem('ag_habito_lastday',habitoLastDay); }
-    if(Array.isArray(data.finanzas)) { finanzas=mergeById(finanzas, data.finanzas, false); localStorage.setItem('ag_finanzas',JSON.stringify(finanzas)); }
-    if(Array.isArray(data.metas))   { metas=mergeById(metas, data.metas, false);     localStorage.setItem('ag_metas',JSON.stringify(metas)); }
+    if(Array.isArray(data.finanzas)) { finanzas=mergeById(finanzas, data.finanzas, preferLocal); localStorage.setItem('ag_finanzas',JSON.stringify(finanzas)); }
+    if(Array.isArray(data.metas))   { metas=mergeById(metas, data.metas, preferLocal);     localStorage.setItem('ag_metas',JSON.stringify(metas)); }
     if(Array.isArray(data.habitos) || data.habitos_done || typeof data.habito_streak === 'number') renderHabitos();
     if(Array.isArray(data.finanzas)) renderFinanzas();
     if(Array.isArray(data.metas)) renderMetas();
+
+    // Subir solo el resultado fusionado, y solo si hacía falta: había
+    // cambios locales pendientes, o la nube estaba vacía y local sí
+    // tenía datos (primer guardado). Si local estaba vacío, tras la
+    // fusión ya es igual a la nube, así que subirlo es inofensivo.
+    if(pending) scheduleSync();
+    else if(!cloudHasData && localHasData) scheduleSync();
   }
 
   function syncNow(){
     if(!navigator.onLine || isSaving) return;
-    // Cambios locales pendientes: subir antes de bajar nada de la nube.
-    if(hasPendingLocalChanges()){ scheduleSync(); return; }
+    // Orden anti-borrado: SIEMPRE bajar primero la nube y fusionarla en
+    // local (applyCloudData); solo después, si había cambios locales
+    // pendientes, se sube el documento ya fusionado. Nunca se sube el
+    // documento local tal cual sin haberlo fusionado antes.
     if(window._sb) window._sb.load(function(data){ applyCloudData(data); });
   }
 
@@ -686,19 +730,11 @@
     window.addEventListener('online', function(){
       updateOfflineBar();
       if(!window._sb) return;
-      // Si hay cambios locales pendientes (la marca sobrevive a recargas),
-      // subirlos PRIMERO y solo después bajar/aplicar lo de la nube.
-      if(hasPendingLocalChanges()){
-        isSaving = true;
-        window._sb.save(checks, agendas, notas, diario, cloudPayload(), function(newAt){
-          isSaving = false;
-          if(newAt){ lastCloudAt=newAt; localStorage.setItem('ag_cloud_at',newAt); clearLocalDirty(); }
-          syncNow();
-        });
-        return;
-      }
-      // Sin cambios pendientes: bajar y fusionar lo de la nube.
-      window._sb.load(function(data){ applyCloudData(data); });
+      // Al volver online: bajar y fusionar primero (syncNow); si hay
+      // cambios pendientes, applyCloudData sube el resultado fusionado.
+      // Nunca subir directo el documento local: una instancia vacía
+      // borraría la nube (bug 2026-11-06).
+      syncNow();
     });
     window.addEventListener('offline', updateOfflineBar);
 
@@ -1647,9 +1683,44 @@
         if(extra.habito_lastday !== undefined) row.habito_lastday = extra.habito_lastday;
         if(extra.finanzas !== undefined) row.finanzas = extra.finanzas;
         if(extra.metas !== undefined) row.metas = extra.metas;
-        supabase.from('agenda').upsert(row).select('updated_at').single().then(function(res){
-          if(res.error){ console.warn('SB save error:', res.error.message); if(cb) cb(null); }
-          else { console.log('SB saved OK'); if(cb && res.data) cb(res.data.updated_at); }
+        // ANTI-BORRADO (bug 2026-11-06): antes de subir, bajar la nube y
+        // comprobar que no vamos a sobrescribir datos con un documento
+        // vacío. Una instancia nueva (p. ej. el icono PWA de iOS, con su
+        // propio localStorage vacío, separado de Safari) no debe borrar
+        // la nube. Si la fila a subir está vacía en TODAS las colecciones
+        // y la nube tiene datos, NO se sube: se devuelve el updated_at de
+        // la nube para que el llamador actualice su marca, y el siguiente
+        // ciclo de sincronización fusiona la nube en local. Si la nube no
+        // existe o está vacía, se permite la subida (primer guardado).
+        function arrEmpty(a){ return !Array.isArray(a) || a.length === 0; }
+        function rowIsEmpty(r){
+          return arrEmpty(r.checks) && arrEmpty(r.agendas) && arrEmpty(r.notas) && arrEmpty(r.diario) &&
+                 arrEmpty(r.habitos) && arrEmpty(r.finanzas) && arrEmpty(r.metas) &&
+                 (!r.habitos_done || Object.keys(r.habitos_done).length === 0) &&
+                 !(typeof r.habito_streak === 'number' && r.habito_streak > 0) &&
+                 !(typeof r.habito_lastday === 'string' && r.habito_lastday !== '');
+        }
+        function doUpsert(){
+          supabase.from('agenda').upsert(row).select('updated_at').single().then(function(res){
+            if(res.error){ console.warn('SB save error:', res.error.message); if(cb) cb(null); }
+            else { console.log('SB saved OK'); if(cb && res.data) cb(res.data.updated_at); }
+          });
+        }
+        supabase.from('agenda').select('*').eq('id','datos').single().then(function(res){
+          if(res.error){
+            // Sin fila en la nube (PGRST116 = 0 filas): subir es seguro,
+            // es el primer guardado. Otro error de lectura: no arriesgar,
+            // fallar para que scheduleSync reintente después.
+            if(res.error.code === 'PGRST116'){ doUpsert(); }
+            else { console.warn('SB save guard load error:', res.error.message); if(cb) cb(null); }
+            return;
+          }
+          if(rowIsEmpty(row) && !rowIsEmpty(res.data)){
+            console.warn('SB save bloqueado: documento local vacío y la nube tiene datos; no se sube nada vacío.');
+            if(cb) cb(res.data.updated_at);
+            return;
+          }
+          doUpsert();
         });
       },
       load: function(cb){
