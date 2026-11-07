@@ -528,6 +528,67 @@
   var tabOrder=['checklist','agenda','notas','diario','habitos','finanzas','metas','buscar'];
   var searchFilters={tareas:true,eventos:true,notas:true,diario:true};
 
+  // LÁPIDAS DE BORRADO (tombstones, 2026-11-06): un borrado solo quitaba
+  // el ítem del local, y la fusión por id lo volvía a traer desde la
+  // nube (o al revés: la nube lo volvía a subir al local), porque una
+  // fusión por unión no distingue "borrado" de "nunca existió". Por eso
+  // cada borrado guarda el id en ag_deleted_ids (localStorage, máx.
+  // 500 ids, los más recientes) y esa lista SE SINCRONIZA con la nube
+  // en la columna deleted_ids de la fila 'datos' (requiere ALTER TABLE
+  // previo al despliegue; ver reporte). La fusión NUNCA vuelve a subir
+  // ni a bajar un ítem cuyo id esté en la lista (local o nube, unión).
+  // Las lápidas son POR ID, no por texto: si el usuario vuelve a
+  // agregar el mismo texto, el ítem nuevo tiene id nuevo (Date.now())
+  // y aparece sin problema.
+  var TOMBSTONE_KEY = 'ag_deleted_ids';
+  var TOMBSTONE_MAX = 500;
+  function loadDeletedIds(){
+    try {
+      var raw = JSON.parse(localStorage.getItem(TOMBSTONE_KEY) || '[]');
+      if(!Array.isArray(raw)) return [];
+      return raw.filter(function(x){ return typeof x === 'string' || typeof x === 'number'; }).map(function(x){ return String(x); });
+    } catch(e){ return []; }
+  }
+  var deletedIds = loadDeletedIds();
+  function saveDeletedIds(){ localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(deletedIds)); }
+  function deletedIdSet(){ var s = {}; deletedIds.forEach(function(id){ s[id] = true; }); return s; }
+  function isDeletedId(id){ return id !== undefined && id !== null && deletedIdSet()[String(id)] === true; }
+  function addDeletedIds(ids){
+    var changed = false;
+    (Array.isArray(ids) ? ids : []).forEach(function(id){
+      if(id === undefined || id === null) return;
+      var s = String(id);
+      if(deletedIds.indexOf(s) === -1){ deletedIds.push(s); changed = true; }
+    });
+    if(deletedIds.length > TOMBSTONE_MAX) deletedIds = deletedIds.slice(-TOMBSTONE_MAX);
+    if(changed) saveDeletedIds();
+    return changed;
+  }
+  function filterDeleted(arr){ return (Array.isArray(arr) ? arr : []).filter(function(it){ return !(it && isDeletedId(it.id)); }); }
+  function tombstoneCheck(id){
+    // Borrar una tarea borra también su entrada derivada en el diario
+    // (id 'task-'+id, creada al marcarla como hecha).
+    var diaryIds = diario.filter(function(e){ return e.checkId === id; }).map(function(e){ return e.id; });
+    addDeletedIds([id].concat(diaryIds));
+  }
+  // Al arrancar, purgar del local lo que ya esté marcado como borrado
+  // (p. ej. lápidas que llegaron por la nube en una sesión anterior).
+  (function purgeLocalTombstoned(){
+    var before = checks.length + agendas.length + notas.length + diario.length + habitos.length + finanzas.length + metas.length;
+    checks = filterDeleted(checks); agendas = filterDeleted(agendas); notas = filterDeleted(notas);
+    diario = filterDeleted(diario); habitos = filterDeleted(habitos); finanzas = filterDeleted(finanzas); metas = filterDeleted(metas);
+    var after = checks.length + agendas.length + notas.length + diario.length + habitos.length + finanzas.length + metas.length;
+    if(after !== before){
+      localStorage.setItem('ag_checks', JSON.stringify(checks));
+      localStorage.setItem('ag_agendas', JSON.stringify(agendas));
+      localStorage.setItem('ag_notas', JSON.stringify(notas));
+      localStorage.setItem('ag_diario', JSON.stringify(diario));
+      localStorage.setItem('ag_habitos', JSON.stringify(habitos));
+      localStorage.setItem('ag_finanzas', JSON.stringify(finanzas));
+      localStorage.setItem('ag_metas', JSON.stringify(metas));
+    }
+  })();
+
   // Apply saved theme
   if(isLight){ document.body.classList.add('light'); document.getElementById('theme-btn').textContent='☀️'; }
 
@@ -561,18 +622,22 @@
       habito_streak: habitoStreak,
       habito_lastday: habitoLastDay,
       finanzas: finanzas,
-      metas: metas
+      metas: metas,
+      deleted_ids: deletedIds
     };
   }
 
   // Fusión por id: une locales + nube sin duplicar ids. Si un id existe en
   // ambos, gana la versión local cuando preferLocal es true (hay cambios
   // locales pendientes) y la de la nube en caso contrario.
-  // LIMITACIÓN CONOCIDA: un borrado hecho offline en un dispositivo puede
-  // reaparecer si otro dispositivo aún tenía ese elemento, porque la fusión
-  // no distingue "borrado" de "nunca existió". Es mejor que perder datos
-  // nuevos, pero los borrados offline no se propagan como borrados.
+  // LÁPIDAS: antes de fusionar se descartan de AMBOS lados los ítems
+  // cuyo id esté en ag_deleted_ids. Así un borrado sí se propaga: la
+  // nube ya no puede resucitar un ítem borrado en local, ni el local
+  // uno borrado en la nube. (La limitación antigua —"los borrados
+  // offline no se propagan"— queda resuelta por las lápidas.)
   function mergeById(localArr, cloudArr, preferLocal){
+    localArr = filterDeleted(localArr);
+    cloudArr = filterDeleted(cloudArr);
     var byId = {};
     var out = [];
     function keyOf(it){ return (it && it.id !== undefined && it.id !== null) ? 'id:' + it.id : 'json:' + JSON.stringify(it); }
@@ -680,6 +745,32 @@
     // ¡Antes de fusionar! Después de la fusión local ya no está vacío.
     var localHasData = !localDocIsEmpty();
 
+    // LÁPIDAS: unir primero las lápidas de la nube con las locales, y
+    // purgar del local todo ítem marcado como borrado ANTES de fusionar:
+    // mergeById es una unión, así que un ítem borrado que siga en local
+    // sobreviviría a la fusión si no se filtra antes. Esto cubre el
+    // caso clave: la nube trae la lápida (borrado hecho en otro lado o
+    // sembrado), el local todavía tiene el ítem → el ítem desaparece
+    // del local y no se vuelve a subir.
+    var tombstonesChanged = false;
+    if(Array.isArray(data.deleted_ids)) tombstonesChanged = addDeletedIds(data.deleted_ids);
+    var tomb = deletedIdSet();
+    function purgeArr(a){ return a.filter(function(it){ return !(it && tomb[String(it.id)]); }); }
+    checks = purgeArr(checks); agendas = purgeArr(agendas); notas = purgeArr(notas);
+    diario = purgeArr(diario); habitos = purgeArr(habitos); finanzas = purgeArr(finanzas); metas = purgeArr(metas);
+    Object.keys(habitosDone || {}).forEach(function(k){
+      habitosDone[k] = (habitosDone[k] || []).filter(function(id){ return !tomb[String(id)]; });
+      if(habitosDone[k].length === 0) delete habitosDone[k];
+    });
+    localStorage.setItem('ag_checks', JSON.stringify(checks));
+    localStorage.setItem('ag_agendas', JSON.stringify(agendas));
+    localStorage.setItem('ag_notas', JSON.stringify(notas));
+    localStorage.setItem('ag_diario', JSON.stringify(diario));
+    localStorage.setItem('ag_habitos', JSON.stringify(habitos));
+    localStorage.setItem('ag_habitos_done', JSON.stringify(habitosDone));
+    localStorage.setItem('ag_finanzas', JSON.stringify(finanzas));
+    localStorage.setItem('ag_metas', JSON.stringify(metas));
+
     lastCloudAt = data.updated_at;
     localStorage.setItem('ag_cloud_at', lastCloudAt);
 
@@ -709,6 +800,7 @@
     // tenía datos (primer guardado). Si local estaba vacío, tras la
     // fusión ya es igual a la nube, así que subirlo es inofensivo.
     if(pending) scheduleSync();
+    else if(tombstonesChanged) scheduleSync(); // subir las lápidas nuevas a la nube
     else if(!cloudHasData && localHasData) scheduleSync();
   }
 
@@ -949,6 +1041,7 @@
     }
   };
   window.deleteCheck=function(id){
+    tombstoneCheck(id);
     var el=document.querySelector('.check-item[data-id="'+id+'"]');
     if(el){
       el.classList.add('deleting');
@@ -965,6 +1058,8 @@
   };
   window.clearDone=function(){
     var ids=checks.filter(function(c){ return c.done; }).map(function(c){ return c.id; });
+    // Lápidas: también las entradas derivadas en el diario ('task-'+id).
+    addDeletedIds(ids.concat(diario.filter(function(e){ return ids.indexOf(e.checkId)!==-1; }).map(function(e){ return e.id; })));
     checks=checks.filter(function(c){ return !c.done; });
     diario=diario.filter(function(e){ return ids.indexOf(e.checkId)===-1; });
     saveChecks(); saveDiario(); renderChecks(); renderDiarioEntries(); renderCalendar();
@@ -992,6 +1087,7 @@
     document.getElementById('agenda-desc').value='';
   };
   window.deleteAgenda=function(id){
+    addDeletedIds([id]);
     agendas=agendas.filter(function(a){ return a.id!==id; });
     saveAgendas(); renderAgendas(); renderCalendar(); renderDiarioEntries();
   };
@@ -1024,7 +1120,7 @@
     saveNotas(); renderNotas();
     document.getElementById('nota-titulo').value=''; document.getElementById('nota-body').value='';
   };
-  window.deleteNota=function(id){ notas=notas.filter(function(n){ return n.id!==id; }); saveNotas(); renderNotas(); };
+  window.deleteNota=function(id){ addDeletedIds([id]); notas=notas.filter(function(n){ return n.id!==id; }); saveNotas(); renderNotas(); };
   window.toggleNota=function(id){
     var n=notas.find(function(x){ return x.id===id; }); if(!n) return;
     var el=document.getElementById('nb-'+id), btn=document.getElementById('neb-'+id);
@@ -1085,7 +1181,7 @@
     diario.push({id:''+Date.now(),key:activeDay,text:inp.value.trim(),time:time12(t),tag:selectedDiarioTag||''});
     saveDiario(); inp.value=''; selectedDiarioTag=''; initDiarioTagSelector(); renderDiarioEntries(); renderCalendar();
   };
-  window.deleteDiarioEntry=function(id){ diario=diario.filter(function(e){ return e.id!==id; }); saveDiario(); renderDiarioEntries(); renderCalendar(); };
+  window.deleteDiarioEntry=function(id){ addDeletedIds([id]); diario=diario.filter(function(e){ return e.id!==id; }); saveDiario(); renderDiarioEntries(); renderCalendar(); };
   window.startDiarioEdit=function(id){ editingId=id; renderDiarioEntries(); setTimeout(function(){ var t=document.getElementById('edit-'+id); if(t){ t.focus(); t.setSelectionRange(t.value.length,t.value.length); } },30); };
   window.cancelDiarioEdit=function(){ editingId=null; renderDiarioEntries(); };
   window.saveDiarioEdit=function(id){
@@ -1291,10 +1387,10 @@
                 var data=JSON.parse(code.data);
                 if(data.checks||data.notas||data.diario){
                   stopQRScan();
-                  if(data.checks)  { checks=data.checks;   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
-                  if(data.agendas) { agendas=data.agendas; localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
-                  if(data.notas)   { notas=data.notas;     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
-                  if(data.diario)  { diario=data.diario;   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
+                  if(data.checks)  { checks=filterDeleted(data.checks);   localStorage.setItem('ag_checks',JSON.stringify(checks));   renderChecks(); }
+                  if(data.agendas) { agendas=filterDeleted(data.agendas); localStorage.setItem('ag_agendas',JSON.stringify(agendas)); renderAgendas(); }
+                  if(data.notas)   { notas=filterDeleted(data.notas);     localStorage.setItem('ag_notas',JSON.stringify(notas));     renderNotas(); }
+                  if(data.diario)  { diario=filterDeleted(data.diario);   localStorage.setItem('ag_diario',JSON.stringify(diario));   renderDiarioEntries(); renderCalendar(); }
                   // Save to Supabase immediately so it doesn't get overwritten
                   if(window._sb) window._sb.save(checks, agendas, notas, diario, cloudPayload());
                   showMsg('✅ Datos importados desde QR');
@@ -1340,10 +1436,10 @@
     reader.onload=function(e){
       try{
         var data=JSON.parse(e.target.result);
-        if(data.checks)  { checks=data.checks;   saveChecks();  renderChecks(); }
-        if(data.agendas) { agendas=data.agendas; saveAgendas(); renderAgendas(); }
-        if(data.notas)   { notas=data.notas;     saveNotas();   renderNotas(); }
-        if(data.diario)  { diario=data.diario;   saveDiario();  renderDiarioEntries(); renderCalendar(); }
+        if(data.checks)  { checks=filterDeleted(data.checks);   saveChecks();  renderChecks(); }
+        if(data.agendas) { agendas=filterDeleted(data.agendas); saveAgendas(); renderAgendas(); }
+        if(data.notas)   { notas=filterDeleted(data.notas);     saveNotas();   renderNotas(); }
+        if(data.diario)  { diario=filterDeleted(data.diario);   saveDiario();  renderDiarioEntries(); renderCalendar(); }
         var msg=document.getElementById('backup-msg');
         msg.textContent='Datos importados correctamente';
         msg.style.display='block';
@@ -1484,6 +1580,12 @@
   };
 
   window.deleteHabito=function(id){
+    addDeletedIds([id]);
+    // Quitar también sus marcas en habitosDone para no dejar basura.
+    Object.keys(habitosDone || {}).forEach(function(k){
+      habitosDone[k] = (habitosDone[k] || []).filter(function(x){ return x !== id; });
+      if(habitosDone[k].length === 0) delete habitosDone[k];
+    });
     habitos=habitos.filter(function(h){return h.id!==id;});
     saveHabitos(); renderHabitos();
   };
@@ -1551,7 +1653,7 @@
     finanzas.push({id:''+Date.now(),tipo:finModalTipo,desc:desc,monto:monto,cat:cat,mes:mk,fecha:todayKey});
     saveFinanzas(); hideFinModal(); renderFinanzas();
   };
-  window.deleteFinMovimiento=function(id){ finanzas=finanzas.filter(function(m){return m.id!==id;}); saveFinanzas(); renderFinanzas(); };
+  window.deleteFinMovimiento=function(id){ addDeletedIds([id]); finanzas=finanzas.filter(function(m){return m.id!==id;}); saveFinanzas(); renderFinanzas(); };
 
   // ===================== METAS =====================
   function saveMetas(){ localStorage.setItem('ag_metas',JSON.stringify(metas)); scheduleSync(); }
@@ -1620,7 +1722,7 @@
   };
 
   window.archivarMeta=function(id){ var m=metas.find(function(x){return x.id===id;}); if(m) m.archivada=!m.archivada; saveMetas(); renderMetas(); };
-  window.deleteMeta=function(id){ metas=metas.filter(function(m){return m.id!==id;}); saveMetas(); renderMetas(); };
+  window.deleteMeta=function(id){ addDeletedIds([id]); metas=metas.filter(function(m){return m.id!==id;}); saveMetas(); renderMetas(); };
   window.updateMetaProgreso=function(id){
     var m=metas.find(function(x){return x.id===id;}); if(!m) return;
     var v=prompt('Progreso actual (de $'+m.total+'):',m.progreso);
@@ -1662,7 +1764,7 @@
     window._sb = {
       // save(checks, agendas, notas, diario[, extra][, cb])
       // extra (opcional) = {habitos, habitos_done, habito_streak,
-      // habito_lastday, finanzas, metas}. El 5º argumento puede ser
+      // habito_lastday, finanzas, metas, deleted_ids}. El 5º argumento puede ser
       // directamente el callback (llamadas antiguas sin extra).
       // En caso de error se llama cb(null) para no dejar isSaving
       // bloqueado y permitir el reintento de scheduleSync.
@@ -1683,6 +1785,16 @@
         if(extra.habito_lastday !== undefined) row.habito_lastday = extra.habito_lastday;
         if(extra.finanzas !== undefined) row.finanzas = extra.finanzas;
         if(extra.metas !== undefined) row.metas = extra.metas;
+        if(extra.deleted_ids !== undefined) row.deleted_ids = extra.deleted_ids;
+        // LÁPIDAS DE BORRADO (2026-11-06): la fusión por colección de
+        // arriba impedía perder datos, pero también impedía borrar:
+        // un ítem borrado en local volvía desde la nube y viceversa.
+        // Ahora cada borrado deja su id en deleted_ids (columna nueva
+        // de la fila 'datos'; requiere ALTER TABLE previo al despliegue)
+        // y mergeRowWithCloud filtra por esa lista (unión local+nube):
+        // un ítem con lápida NUNCA vuelve a aparecer ni a subirse.
+        // Las lápidas son por id, no por texto: un ítem nuevo con el
+        // mismo texto tiene id nuevo (Date.now()) y sí aparece.
         // ANTI-BORRADO POR COLECCIÓN (bugs 2026-11-06):
         // - 16:56: una instancia nueva (p. ej. el icono PWA de iOS, con
         //   su propio localStorage vacío, separado de Safari) subió un
@@ -1732,7 +1844,29 @@
           });
           return out;
         }
-        function mergeRowWithCloud(toUpload, cloud){
+        // Lápidas en este bloque (duplicadas del IIFE principal, que no
+        // es accesible desde aquí): la lista vive en localStorage
+        // 'ag_deleted_ids' y en la columna deleted_ids de la fila.
+        function sbLoadDeletedIds(){
+          try {
+            var raw = JSON.parse(localStorage.getItem('ag_deleted_ids') || '[]');
+            if(!Array.isArray(raw)) return [];
+            return raw.filter(function(x){ return typeof x === 'string' || typeof x === 'number'; }).map(function(x){ return String(x); });
+          } catch(e){ return []; }
+        }
+        function sbUnionDeletedIds(a, b){
+          var out = (Array.isArray(a) ? a : []).map(function(x){ return String(x); });
+          (Array.isArray(b) ? b : []).forEach(function(id){
+            var s = String(id);
+            if(out.indexOf(s) === -1) out.push(s);
+          });
+          return out.slice(-500);
+        }
+        function sbFilterDeleted(arr, tombSet){
+          return (Array.isArray(arr) ? arr : []).filter(function(it){ return !(it && it.id !== undefined && it.id !== null && tombSet[String(it.id)]); });
+        }
+        function mergeRowWithCloud(toUpload, cloud, tombSet){
+          tombSet = tombSet || {};
           var merged = { id: toUpload.id, updated_at: toUpload.updated_at };
           ['checks','agendas','notas','diario','habitos','finanzas','metas'].forEach(function(f){
             if(toUpload[f] === undefined) return; // no venía en la subida: no tocar la nube
@@ -1741,6 +1875,9 @@
             } else {
               merged[f] = sbMergeById(toUpload[f], cloud[f], true);
             }
+            // Lápida manda sobre la fusión: lo borrado no resucita
+            // aunque la nube (o el local) todavía lo tenga.
+            merged[f] = sbFilterDeleted(merged[f], tombSet);
           });
           if(toUpload.habitos_done !== undefined){
             var cloudDone = cloud.habitos_done || {};
@@ -1749,7 +1886,14 @@
             } else {
               merged.habitos_done = sbMergeDoneMap(toUpload.habitos_done, cloudDone);
             }
+            // Quitar marcas de hábitos borrados (lápidas).
+            Object.keys(merged.habitos_done || {}).forEach(function(k){
+              merged.habitos_done[k] = (merged.habitos_done[k] || []).filter(function(id){ return !tombSet[String(id)]; });
+              if(merged.habitos_done[k].length === 0) delete merged.habitos_done[k];
+            });
           }
+          // La lista de lápidas es la unión local+nube (tope 500).
+          merged.deleted_ids = sbUnionDeletedIds(toUpload.deleted_ids, cloud.deleted_ids);
           if(toUpload.habito_streak !== undefined){
             merged.habito_streak = Math.max(toUpload.habito_streak || 0, cloud.habito_streak || 0);
           }
@@ -1769,7 +1913,22 @@
         }
         function doUpsert(){
           supabase.from('agenda').upsert(row).select('updated_at').single().then(function(res){
-            if(res.error){ console.warn('SB save error:', res.error.message); if(cb) cb(null); }
+            if(res.error){
+              // Si la columna deleted_ids aún no existe (ALTER TABLE
+              // pendiente), reintentar UNA vez sin ella para no bloquear
+              // el guardado de los datos; las lápidas se quedan en
+              // localStorage y se volverán a intentar en el próximo sync.
+              if(row.deleted_ids !== undefined && /deleted_ids/i.test(res.error.message || '')){
+                console.warn('SB save: columna deleted_ids ausente, reintentando sin lápidas (ejecuta el ALTER TABLE).');
+                delete row.deleted_ids;
+                supabase.from('agenda').upsert(row).select('updated_at').single().then(function(res2){
+                  if(res2.error){ console.warn('SB save error:', res2.error.message); if(cb) cb(null); }
+                  else { console.log('SB saved OK (sin deleted_ids)'); if(cb && res2.data) cb(res2.data.updated_at); }
+                });
+                return;
+              }
+              console.warn('SB save error:', res.error.message); if(cb) cb(null);
+            }
             else { console.log('SB saved OK'); if(cb && res.data) cb(res.data.updated_at); }
           });
         }
@@ -1785,7 +1944,15 @@
           // Fusión por colección con la nube antes de subir (protección
           // principal). Respaldo: si tras fusionar el documento siguiera
           // vacío y la nube tuviera datos, no subir nada.
-          row = mergeRowWithCloud(row, res.data);
+          // Lápidas: unir las locales con las de la nube y filtrar por
+          // esa unión; guardar la unión en localStorage para que
+          // applyCloudData también las vea aunque no haya bajado aún.
+          var tombUnion = sbUnionDeletedIds(row.deleted_ids, res.data.deleted_ids);
+          var tombSet = {};
+          tombUnion.forEach(function(id){ tombSet[id] = true; });
+          row = mergeRowWithCloud(row, res.data, tombSet);
+          row.deleted_ids = tombUnion;
+          try { localStorage.setItem('ag_deleted_ids', JSON.stringify(tombUnion)); } catch(e){}
           if(rowIsEmpty(row) && !rowIsEmpty(res.data)){
             console.warn('SB save bloqueado: tras fusionar, el documento sigue vacío y la nube tiene datos; no se sube nada vacío.');
             if(cb) cb(res.data.updated_at);
